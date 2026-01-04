@@ -211,22 +211,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const signature = request.headers.get('X-Hub-Signature-256')
   const payload = await request.text()
 
-  // Only handle push events
   const event = request.headers.get('X-GitHub-Event')
-  if (event !== 'push') {
-    return new Response('OK', { status: 200 })
-  }
 
-  const data = JSON.parse(payload) as PushEvent
-
-  // Check if any commits modified .beads/issues.jsonl
-  const beadsModified = data.commits.some(commit =>
-    commit.modified.includes('.beads/issues.jsonl') ||
-    commit.added.includes('.beads/issues.jsonl')
-  )
-
-  if (!beadsModified) {
-    return new Response('OK', { status: 200 })
+  // Parse payload to get repo info for signature verification
+  let data: PushEvent
+  try {
+    data = JSON.parse(payload) as PushEvent
+  } catch {
+    return new Response('Invalid payload', { status: 400 })
   }
 
   const repoOwner = data.repository.owner.login
@@ -236,18 +228,60 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     // Look up the webhook secret for this repo (now global, not per-user)
     const repo = await env.DB.prepare(
-      'SELECT id, webhook_secret FROM repos WHERE owner = ? AND name = ?'
-    ).bind(repoOwner, repoName).first() as { id: number; webhook_secret: string } | null
+      'SELECT id, webhook_secret, webhook_owner_id FROM repos WHERE owner = ? AND name = ?'
+    ).bind(repoOwner, repoName).first() as { id: number; webhook_secret: string | null; webhook_owner_id: number | null } | null
 
     if (!repo) {
       // No one tracking this repo, nothing to do
       return new Response('OK', { status: 200 })
     }
 
-    // Verify webhook signature against per-repo secret
-    const isValid = await verifySignature(payload, signature, repo.webhook_secret)
+    // Try to verify against confirmed webhook secret first
+    let isValid = false
+    if (repo.webhook_secret) {
+      isValid = await verifySignature(payload, signature, repo.webhook_secret)
+    }
+
+    // If not valid, check provisional secrets (someone might be verifying their setup)
+    if (!isValid) {
+      const provisionalSecrets = await env.DB.prepare(
+        'SELECT id, user_id, secret FROM provisional_webhook_secrets WHERE repo_id = ?'
+      ).bind(repo.id).all() as { results: Array<{ id: number; user_id: number; secret: string }> }
+
+      for (const provisional of provisionalSecrets.results) {
+        if (await verifySignature(payload, signature, provisional.secret)) {
+          isValid = true
+          // Mark this provisional secret as verified by updating its timestamp
+          await env.DB.prepare(
+            'UPDATE provisional_webhook_secrets SET verified_at = CURRENT_TIMESTAMP WHERE id = ?'
+          ).bind(provisional.id).run()
+          break
+        }
+      }
+    }
+
     if (!isValid) {
       return new Response('Invalid signature', { status: 401 })
+    }
+
+    // Handle ping events (just acknowledge, used for verification)
+    if (event === 'ping') {
+      return new Response('Pong', { status: 200 })
+    }
+
+    // Only handle push events for notifications
+    if (event !== 'push') {
+      return new Response('OK', { status: 200 })
+    }
+
+    // Check if any commits modified .beads/issues.jsonl
+    const beadsModified = data.commits.some(commit =>
+      commit.modified.includes('.beads/issues.jsonl') ||
+      commit.added.includes('.beads/issues.jsonl')
+    )
+
+    if (!beadsModified) {
+      return new Response('OK', { status: 200 })
     }
 
     // Get a user's token to fetch the issues (any user with this repo will do)

@@ -49,8 +49,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     // Check if user has a provisional secret
     const provisional = await env.DB.prepare(
-      'SELECT secret FROM provisional_webhook_secrets WHERE repo_id = ? AND user_id = ?'
-    ).bind(repoId, user.id).first() as { secret: string } | null
+      'SELECT secret, verified_at FROM provisional_webhook_secrets WHERE repo_id = ? AND user_id = ?'
+    ).bind(repoId, user.id).first() as { secret: string; verified_at: string | null } | null
 
     return new Response(JSON.stringify({
       configured: isConfigured,
@@ -59,6 +59,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       secret: isOwner ? repo.webhook_secret : null,
       // Show provisional secret if user is in configure flow
       provisionalSecret: provisional?.secret || null,
+      // Show if webhook has been verified by GitHub ping
+      verified: provisional?.verified_at ? true : false,
       canConfigure: !isConfigured || isOwner,
     }), {
       status: 200,

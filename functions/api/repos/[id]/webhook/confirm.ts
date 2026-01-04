@@ -23,11 +23,19 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     // Get provisional secret
     const provisional = await env.DB.prepare(
-      'SELECT secret FROM provisional_webhook_secrets WHERE repo_id = ? AND user_id = ?'
-    ).bind(repoId, user.id).first() as { secret: string } | null
+      'SELECT secret, verified_at FROM provisional_webhook_secrets WHERE repo_id = ? AND user_id = ?'
+    ).bind(repoId, user.id).first() as { secret: string; verified_at: string | null } | null
 
     if (!provisional) {
       return new Response(JSON.stringify({ error: 'No pending configuration. Call configure first.' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Check that GitHub has pinged us with this secret (verification)
+    if (!provisional.verified_at) {
+      return new Response(JSON.stringify({ error: 'Webhook not verified. Please ensure the webhook is configured correctly in GitHub and that GitHub has successfully sent a ping.' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
