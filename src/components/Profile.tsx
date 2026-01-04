@@ -26,7 +26,6 @@ interface User {
 
 interface ProfileData {
   email: string | null
-  email_notifications: boolean
 }
 
 interface Props {
@@ -51,7 +50,6 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
 
   // Email settings
   const [email, setEmail] = useState('')
-  const [emailNotifications, setEmailNotifications] = useState(false)
   const [savingEmail, setSavingEmail] = useState(false)
 
   useEffect(() => {
@@ -64,7 +62,6 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
       if (res.ok) {
         const data = await res.json() as { profile: ProfileData }
         setEmail(data.profile.email || '')
-        setEmailNotifications(data.profile.email_notifications)
       }
     } catch {
       // Profile data optional, continue without it
@@ -176,19 +173,18 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           email: email || null,
-          email_notifications: emailNotifications,
         }),
       })
 
       if (res.ok) {
-        setSuccess('Email settings saved')
+        setSuccess('Email saved')
         setTimeout(() => setSuccess(null), 3000)
       } else {
         const data = await res.json() as { error?: string }
-        setError(data.error || 'Failed to save email settings')
+        setError(data.error || 'Failed to save email')
       }
     } catch {
-      setError('Failed to save email settings')
+      setError('Failed to save email')
     } finally {
       setSavingEmail(false)
     }
@@ -358,10 +354,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
       {isPremium && (
         <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
           <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Email Notifications</h3>
-          <div className="mb-2">
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
-              Email Address
-            </label>
+          <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
             <input
               type="email"
               value={email}
@@ -369,27 +362,17 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
               placeholder="your@email.com"
               style={{ width: '100%', maxWidth: '300px' }}
             />
+            <button
+              onClick={handleSaveEmail}
+              disabled={savingEmail}
+              style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem', flexShrink: 0 }}
+            >
+              {savingEmail ? 'Saving...' : 'Save'}
+            </button>
           </div>
-          <div className="mb-2">
-            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
-              <input
-                type="checkbox"
-                checked={emailNotifications}
-                onChange={(e) => setEmailNotifications(e.target.checked)}
-              />
-              <span style={{ fontSize: '0.875rem' }}>Receive email notifications for issue changes</span>
-            </label>
-            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
-              Get notified when issues assigned to you or created by you are updated
-            </div>
+          <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.5rem' }}>
+            Get notified when issues assigned to you are updated
           </div>
-          <button
-            onClick={handleSaveEmail}
-            disabled={savingEmail}
-            style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
-          >
-            {savingEmail ? 'Saving...' : 'Save Email Settings'}
-          </button>
         </div>
       )}
 

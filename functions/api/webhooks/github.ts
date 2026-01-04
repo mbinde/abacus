@@ -43,7 +43,6 @@ interface UserWithEmail {
   id: number
   github_login: string
   email: string
-  email_notifications: number
 }
 
 // Verify GitHub webhook signature
@@ -355,15 +354,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return new Response('OK', { status: 200 })
     }
 
-    // Get users to notify (those with email notifications enabled who track this repo)
+    // Get users to notify (those with email who track this repo)
     const usersToNotify = await env.DB.prepare(`
-      SELECT DISTINCT u.id, u.github_login, u.email, u.email_notifications
+      SELECT DISTINCT u.id, u.github_login, u.email
       FROM users u
       JOIN user_repos ur ON ur.user_id = u.id
       JOIN repos r ON r.id = ur.repo_id
       WHERE r.owner = ? AND r.name = ?
         AND u.email IS NOT NULL
-        AND u.email_notifications = 1
     `).bind(repoOwner, repoName).all() as { results: UserWithEmail[] }
 
     // Send notifications
