@@ -27,7 +27,7 @@ interface Props {
   onBulkUpdate?: (issueIds: string[], updates: BulkUpdate) => Promise<void>
 }
 
-type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred'
+type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tree'
 type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
 type SortDir = 'asc' | 'desc'
 
@@ -75,6 +75,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     in_progress: issues.filter(i => i.status === 'in_progress').length,
     closed: issues.filter(i => i.status === 'closed').length,
     starred: issues.filter(i => starredIds.has(i.id)).length,
+    tree: issues.filter(i => i.issue_type === 'epic' || i.parent).length,
   }
 
   // Filter issues by status
@@ -83,6 +84,9 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     filtered = issues
   } else if (filter === 'starred') {
     filtered = issues.filter(i => starredIds.has(i.id))
+  } else if (filter === 'tree') {
+    // Show epics and issues with parents, organized as a tree
+    filtered = issues
   } else {
     filtered = issues.filter(i => i.status === filter)
   }
@@ -98,37 +102,58 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   }
 
   // Sort issues
-  const sorted = [...filtered].sort((a, b) => {
-    let cmp = 0
-    switch (sortKey) {
-      case 'starred':
-        const aStarred = starredIds.has(a.id) ? 1 : 0
-        const bStarred = starredIds.has(b.id) ? 1 : 0
-        cmp = aStarred - bStarred
-        break
-      case 'id':
-        cmp = a.id.localeCompare(b.id)
-        break
-      case 'title':
-        cmp = a.title.localeCompare(b.title)
-        break
-      case 'type':
-        cmp = a.issue_type.localeCompare(b.issue_type)
-        break
-      case 'status':
-        cmp = a.status.localeCompare(b.status)
-        break
-      case 'priority':
-        cmp = a.priority - b.priority
-        break
-      case 'updated':
-        const aDate = a.updated_at || a.created_at
-        const bDate = b.updated_at || b.created_at
-        cmp = aDate.localeCompare(bDate)
-        break
+  let sorted: Issue[]
+  if (filter === 'tree') {
+    // Tree view: organize by parent-child relationships
+    sorted = buildTreeOrder(filtered)
+  } else {
+    sorted = [...filtered].sort((a, b) => {
+      let cmp = 0
+      switch (sortKey) {
+        case 'starred':
+          const aStarred = starredIds.has(a.id) ? 1 : 0
+          const bStarred = starredIds.has(b.id) ? 1 : 0
+          cmp = aStarred - bStarred
+          break
+        case 'id':
+          cmp = a.id.localeCompare(b.id)
+          break
+        case 'title':
+          cmp = a.title.localeCompare(b.title)
+          break
+        case 'type':
+          cmp = a.issue_type.localeCompare(b.issue_type)
+          break
+        case 'status':
+          cmp = a.status.localeCompare(b.status)
+          break
+        case 'priority':
+          cmp = a.priority - b.priority
+          break
+        case 'updated':
+          const aDate = a.updated_at || a.created_at
+          const bDate = b.updated_at || b.created_at
+          cmp = aDate.localeCompare(bDate)
+          break
+      }
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+  }
+
+  // Build depth map for tree view indentation
+  const depthMap = new Map<string, number>()
+  if (filter === 'tree') {
+    const issueMap = new Map(issues.map(i => [i.id, i]))
+    for (const issue of sorted) {
+      let depth = 0
+      let current = issue
+      while (current.parent && issueMap.has(current.parent)) {
+        depth++
+        current = issueMap.get(current.parent)!
+      }
+      depthMap.set(issue.id, depth)
     }
-    return sortDir === 'asc' ? cmp : -cmp
-  })
+  }
 
   // Keyboard navigation
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
@@ -245,6 +270,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     { key: 'open', label: 'Open' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'closed', label: 'Closed' },
+    { key: 'tree', label: '🌳 Tree' },
   ]
 
   const SortHeader = ({ column, label }: { column: SortKey; label: string }) => (
@@ -368,17 +394,12 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
                 <code style={{ fontSize: '0.875rem' }}>{issue.id}</code>
               </td>
               <td>
-                <span
-                  style={{
-                    cursor: 'pointer',
-                    color: '#4dc3ff',
-                    textDecoration: issue.status === 'closed' ? 'line-through' : 'none',
-                    opacity: issue.status === 'closed' ? 0.6 : 1
-                  }}
+                <TitleWithPreview
+                  issue={issue}
+                  parentTitle={filter !== 'tree' && issue.parent ? sorted.find(i => i.id === issue.parent)?.title : undefined}
+                  depth={depthMap.get(issue.id) || 0}
                   onClick={() => onEdit(issue)}
-                >
-                  {issue.title}
-                </span>
+                />
               </td>
               <td>
                 <span className={`badge badge-${issue.issue_type}`}>
@@ -484,6 +505,47 @@ function StarButton({ starred, onToggle }: { starred: boolean; onToggle: () => v
       {starred ? '★' : '☆'}
     </button>
   )
+}
+
+// Build tree-ordered list: parents followed by their children
+function buildTreeOrder(issues: Issue[]): Issue[] {
+  const issueMap = new Map(issues.map(i => [i.id, i]))
+  const childrenMap = new Map<string, Issue[]>()
+
+  // Build children map
+  for (const issue of issues) {
+    if (issue.parent) {
+      const siblings = childrenMap.get(issue.parent) || []
+      siblings.push(issue)
+      childrenMap.set(issue.parent, siblings)
+    }
+  }
+
+  // Find root issues (epics or issues without parents)
+  const roots = issues.filter(i => !i.parent || !issueMap.has(i.parent))
+    .sort((a, b) => {
+      // Epics first, then by priority
+      if (a.issue_type === 'epic' && b.issue_type !== 'epic') return -1
+      if (b.issue_type === 'epic' && a.issue_type !== 'epic') return 1
+      return a.priority - b.priority
+    })
+
+  // Recursively add children
+  const result: Issue[] = []
+  function addWithChildren(issue: Issue) {
+    result.push(issue)
+    const children = childrenMap.get(issue.id) || []
+    children.sort((a, b) => a.priority - b.priority)
+    for (const child of children) {
+      addWithChildren(child)
+    }
+  }
+
+  for (const root of roots) {
+    addWithChildren(root)
+  }
+
+  return result
 }
 
 function BulkActionsBar({
@@ -628,6 +690,93 @@ function HelpModal({ onClose }: { onClose: () => void }) {
           </button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function TitleWithPreview({
+  issue,
+  parentTitle,
+  depth = 0,
+  onClick,
+}: {
+  issue: Issue
+  parentTitle?: string
+  depth?: number
+  onClick: () => void
+}) {
+  const [showPreview, setShowPreview] = useState(false)
+  const timeoutRef = useRef<number | null>(null)
+
+  const handleMouseEnter = () => {
+    if (issue.description) {
+      timeoutRef.current = window.setTimeout(() => setShowPreview(true), 400)
+    }
+  }
+
+  const handleMouseLeave = () => {
+    if (timeoutRef.current) {
+      clearTimeout(timeoutRef.current)
+    }
+    setShowPreview(false)
+  }
+
+  return (
+    <div
+      style={{ position: 'relative', paddingLeft: depth > 0 ? `${depth * 1.5}rem` : undefined }}
+      onMouseEnter={handleMouseEnter}
+      onMouseLeave={handleMouseLeave}
+    >
+      {parentTitle && (
+        <div style={{ fontSize: '0.75rem', color: '#888', marginBottom: '0.125rem' }}>
+          ↳ {parentTitle}
+        </div>
+      )}
+      {depth > 0 && !parentTitle && (
+        <span style={{ color: '#555', marginRight: '0.5rem' }}>└</span>
+      )}
+      <span
+        style={{
+          cursor: 'pointer',
+          color: '#4dc3ff',
+          textDecoration: issue.status === 'closed' ? 'line-through' : 'none',
+          opacity: issue.status === 'closed' ? 0.6 : 1,
+        }}
+        onClick={onClick}
+      >
+        {issue.title}
+        {issue.description && (
+          <span style={{ color: '#666', marginLeft: '0.5rem', fontSize: '0.75rem' }}>
+            ⋯
+          </span>
+        )}
+      </span>
+
+      {showPreview && issue.description && (
+        <div
+          style={{
+            position: 'absolute',
+            left: 0,
+            top: '100%',
+            marginTop: '0.25rem',
+            padding: '0.75rem',
+            background: '#1a1a24',
+            border: '1px solid #333',
+            borderRadius: '4px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.4)',
+            zIndex: 100,
+            maxWidth: '400px',
+            minWidth: '200px',
+            whiteSpace: 'pre-wrap',
+            fontSize: '0.875rem',
+            color: '#ccc',
+          }}
+        >
+          {issue.description.length > 300
+            ? issue.description.slice(0, 300) + '...'
+            : issue.description}
+        </div>
+      )}
     </div>
   )
 }
