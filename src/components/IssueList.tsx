@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useEffect, useRef, useCallback } from 'react'
 
 interface Issue {
   id: string
@@ -32,6 +32,11 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   })
   const [sortKey, setSortKey] = useState<SortKey>('priority')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
+  const [searchQuery, setSearchQuery] = useState('')
+  const [selectedIndex, setSelectedIndex] = useState(-1)
+  const [showHelp, setShowHelp] = useState(false)
+  const searchInputRef = useRef<HTMLInputElement>(null)
+  const tableRef = useRef<HTMLTableSectionElement>(null)
 
   const handleFilterChange = (newFilter: StatusFilter) => {
     setFilter(newFilter)
@@ -64,7 +69,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     starred: issues.filter(i => starredIds.has(i.id)).length,
   }
 
-  // Filter issues
+  // Filter issues by status
   let filtered: Issue[]
   if (filter === 'all') {
     filtered = issues
@@ -72,6 +77,16 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     filtered = issues.filter(i => starredIds.has(i.id))
   } else {
     filtered = issues.filter(i => i.status === filter)
+  }
+
+  // Filter by search query
+  if (searchQuery.trim()) {
+    const query = searchQuery.toLowerCase()
+    filtered = filtered.filter(i =>
+      i.id.toLowerCase().includes(query) ||
+      i.title.toLowerCase().includes(query) ||
+      (i.description?.toLowerCase().includes(query))
+    )
   }
 
   // Sort issues
@@ -107,6 +122,73 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     return sortDir === 'asc' ? cmp : -cmp
   })
 
+  // Keyboard navigation
+  const handleKeyDown = useCallback((e: KeyboardEvent) => {
+    // Ignore if typing in an input
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) {
+      if (e.key === 'Escape') {
+        (e.target as HTMLElement).blur()
+        setSelectedIndex(0)
+      }
+      return
+    }
+
+    switch (e.key) {
+      case 'j': // Move down
+        e.preventDefault()
+        setSelectedIndex(prev => Math.min(prev + 1, sorted.length - 1))
+        break
+      case 'k': // Move up
+        e.preventDefault()
+        setSelectedIndex(prev => Math.max(prev - 1, 0))
+        break
+      case 'e': // Edit selected
+      case 'Enter':
+        if (selectedIndex >= 0 && selectedIndex < sorted.length) {
+          e.preventDefault()
+          onEdit(sorted[selectedIndex])
+        }
+        break
+      case 's': // Star/unstar selected
+        if (selectedIndex >= 0 && selectedIndex < sorted.length) {
+          e.preventDefault()
+          const issue = sorted[selectedIndex]
+          onToggleStar(issue.id, !starredIds.has(issue.id))
+        }
+        break
+      case '/': // Focus search
+        e.preventDefault()
+        searchInputRef.current?.focus()
+        break
+      case '?': // Show help
+        e.preventDefault()
+        setShowHelp(prev => !prev)
+        break
+      case 'Escape':
+        setShowHelp(false)
+        setSelectedIndex(-1)
+        break
+    }
+  }, [sorted, selectedIndex, onEdit, onToggleStar, starredIds])
+
+  useEffect(() => {
+    document.addEventListener('keydown', handleKeyDown)
+    return () => document.removeEventListener('keydown', handleKeyDown)
+  }, [handleKeyDown])
+
+  // Scroll selected row into view
+  useEffect(() => {
+    if (selectedIndex >= 0 && tableRef.current) {
+      const row = tableRef.current.children[selectedIndex] as HTMLElement
+      row?.scrollIntoView({ block: 'nearest' })
+    }
+  }, [selectedIndex])
+
+  // Reset selection when list changes
+  useEffect(() => {
+    setSelectedIndex(-1)
+  }, [filter, searchQuery])
+
   const filterButtons: { key: StatusFilter; label: string }[] = [
     { key: 'all', label: 'All' },
     { key: 'starred', label: '★ Starred' },
@@ -126,7 +208,8 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
 
   return (
     <div className="card" style={{ overflowX: 'auto' }}>
-      <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem' }}>
+      {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
+      <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
         {filterButtons.map(({ key, label }) => (
           <button
             key={key}
@@ -141,6 +224,36 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
             {label} ({counts[key]})
           </button>
         ))}
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+          <input
+            ref={searchInputRef}
+            type="text"
+            placeholder="Search issues... (press /)"
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              padding: '0.375rem 0.75rem',
+              fontSize: '0.875rem',
+              width: '200px',
+              background: '#1a1a24',
+              border: '1px solid #333',
+              borderRadius: '4px',
+              color: '#e0e0e0',
+            }}
+          />
+          <button
+            onClick={() => setShowHelp(true)}
+            style={{
+              padding: '0.375rem 0.5rem',
+              fontSize: '0.875rem',
+              background: '#2a2a3a',
+              color: '#888',
+            }}
+            title="Keyboard shortcuts"
+          >
+            ?
+          </button>
+        </div>
       </div>
       <table>
         <thead>
@@ -155,9 +268,16 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
             <th>Actions</th>
           </tr>
         </thead>
-        <tbody>
-          {sorted.map((issue) => (
-            <tr key={issue.id}>
+        <tbody ref={tableRef}>
+          {sorted.map((issue, index) => (
+            <tr
+              key={issue.id}
+              style={{
+                background: selectedIndex === index ? '#1e3a5f' : undefined,
+                outline: selectedIndex === index ? '2px solid #0077cc' : undefined,
+              }}
+              onClick={() => setSelectedIndex(index)}
+            >
               <td>
                 <StarButton
                   starred={starredIds.has(issue.id)}
@@ -283,5 +403,73 @@ function StarButton({ starred, onToggle }: { starred: boolean; onToggle: () => v
     >
       {starred ? '★' : '☆'}
     </button>
+  )
+}
+
+function HelpModal({ onClose }: { onClose: () => void }) {
+  const shortcuts = [
+    { key: 'j', description: 'Move down' },
+    { key: 'k', description: 'Move up' },
+    { key: 'e / Enter', description: 'Edit selected issue' },
+    { key: 's', description: 'Star/unstar selected issue' },
+    { key: '/', description: 'Focus search' },
+    { key: '?', description: 'Toggle this help' },
+    { key: 'Escape', description: 'Clear selection / close help' },
+  ]
+
+  return (
+    <div
+      style={{
+        position: 'fixed',
+        inset: 0,
+        background: 'rgba(0,0,0,0.7)',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'center',
+        zIndex: 1000,
+      }}
+      onClick={onClose}
+    >
+      <div
+        style={{
+          background: '#1a1a24',
+          border: '1px solid #333',
+          borderRadius: '8px',
+          padding: '1.5rem',
+          minWidth: '300px',
+          maxWidth: '400px',
+        }}
+        onClick={(e) => e.stopPropagation()}
+      >
+        <h3 style={{ marginBottom: '1rem', color: '#e0e0e0' }}>Keyboard Shortcuts</h3>
+        <table style={{ width: '100%' }}>
+          <tbody>
+            {shortcuts.map(({ key, description }) => (
+              <tr key={key}>
+                <td style={{ padding: '0.5rem 0', width: '100px' }}>
+                  <kbd style={{
+                    background: '#2a2a3a',
+                    border: '1px solid #444',
+                    borderRadius: '4px',
+                    padding: '0.25rem 0.5rem',
+                    fontSize: '0.875rem',
+                    fontFamily: 'monospace',
+                    color: '#4dc3ff',
+                  }}>
+                    {key}
+                  </kbd>
+                </td>
+                <td style={{ padding: '0.5rem 0', color: '#aaa' }}>{description}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+        <div style={{ marginTop: '1rem', textAlign: 'right' }}>
+          <button onClick={onClose} style={{ padding: '0.375rem 1rem' }}>
+            Close
+          </button>
+        </div>
+      </div>
+    </div>
   )
 }
