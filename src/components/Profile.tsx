@@ -290,6 +290,18 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
 
     return (
       <div style={{ marginTop: '0.75rem', padding: '0.75rem', background: '#0d0d12', borderRadius: '4px' }}>
+        {/* Quick link */}
+        <div style={{ marginBottom: '1rem' }}>
+          <a
+            href={`https://github.com/${repo.owner}/${repo.name}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            style={{ fontSize: '0.75rem' }}
+          >
+            View on GitHub →
+          </a>
+        </div>
+
         {/* Notification Settings */}
         {isPremium && configured && (
           <div style={{ marginBottom: '1rem' }}>
