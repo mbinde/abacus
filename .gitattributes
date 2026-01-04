@@ -1,0 +1,2 @@
+# Use beads merge driver for automatic conflict resolution
+.beads/issues.jsonl merge=beads
