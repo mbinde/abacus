@@ -10,8 +10,9 @@ interface Repo {
   id: number
   owner: string
   name: string
-  webhook_secret: string
   created_at: string
+  webhook_configured: boolean
+  webhook_is_owner: boolean
 }
 
 // GET /api/repos - List user's repos
@@ -21,14 +22,27 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   try {
     const result = await env.DB.prepare(`
-      SELECT r.id, r.owner, r.name, r.webhook_secret, r.created_at
+      SELECT
+        r.id,
+        r.owner,
+        r.name,
+        r.created_at,
+        CASE WHEN r.webhook_secret IS NOT NULL AND r.webhook_owner_id IS NOT NULL THEN 1 ELSE 0 END as webhook_configured,
+        CASE WHEN r.webhook_owner_id = ? THEN 1 ELSE 0 END as webhook_is_owner
       FROM repos r
       JOIN user_repos ur ON ur.repo_id = r.id
       WHERE ur.user_id = ?
       ORDER BY ur.created_at DESC
-    `).bind(user.id).all()
+    `).bind(user.id, user.id).all()
 
-    return new Response(JSON.stringify({ repos: result.results }), {
+    // Convert 0/1 to boolean
+    const repos = (result.results as Array<Record<string, unknown>>).map(r => ({
+      ...r,
+      webhook_configured: Boolean(r.webhook_configured),
+      webhook_is_owner: Boolean(r.webhook_is_owner),
+    }))
+
+    return new Response(JSON.stringify({ repos }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })

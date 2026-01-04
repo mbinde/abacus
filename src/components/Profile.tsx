@@ -4,7 +4,16 @@ interface Repo {
   id: number
   owner: string
   name: string
-  webhook_secret?: string
+  webhook_configured: boolean
+  webhook_is_owner: boolean
+}
+
+interface WebhookStatus {
+  configured: boolean
+  isOwner: boolean
+  secret: string | null
+  provisionalSecret: string | null
+  canConfigure: boolean
 }
 
 interface User {
@@ -26,38 +35,23 @@ interface Props {
   onBack: () => void
   onAddRepo: (owner: string, name: string) => Promise<void>
   onRemoveRepo: (repoId: number) => Promise<void>
+  onReposChange?: () => void
 }
 
-export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }: Props) {
+export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, onReposChange }: Props) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [repoUrl, setRepoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
-  const [expandedSecrets, setExpandedSecrets] = useState<Set<number>>(new Set())
+  const [expandedWebhook, setExpandedWebhook] = useState<number | null>(null)
+  const [webhookStatus, setWebhookStatus] = useState<WebhookStatus | null>(null)
+  const [webhookLoading, setWebhookLoading] = useState(false)
 
   // Email settings
   const [email, setEmail] = useState('')
   const [emailNotifications, setEmailNotifications] = useState(false)
   const [savingEmail, setSavingEmail] = useState(false)
-
-  function toggleSecret(repoId: number) {
-    setExpandedSecrets(prev => {
-      const next = new Set(prev)
-      if (next.has(repoId)) {
-        next.delete(repoId)
-      } else {
-        next.add(repoId)
-      }
-      return next
-    })
-  }
-
-  function copySecret(secret: string) {
-    navigator.clipboard.writeText(secret)
-    setSuccess('Webhook secret copied to clipboard')
-    setTimeout(() => setSuccess(null), 2000)
-  }
 
   useEffect(() => {
     loadProfile()
@@ -74,6 +68,100 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
     } catch {
       // Profile data optional, continue without it
     }
+  }
+
+  async function loadWebhookStatus(repoId: number) {
+    setWebhookLoading(true)
+    try {
+      const res = await fetch(`/api/repos/${repoId}/webhook`)
+      if (res.ok) {
+        const data = await res.json() as WebhookStatus
+        setWebhookStatus(data)
+      }
+    } catch {
+      setError('Failed to load webhook status')
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
+
+  async function handleToggleWebhook(repoId: number) {
+    if (expandedWebhook === repoId) {
+      setExpandedWebhook(null)
+      setWebhookStatus(null)
+    } else {
+      setExpandedWebhook(repoId)
+      await loadWebhookStatus(repoId)
+    }
+  }
+
+  async function handleConfigureWebhook(repoId: number) {
+    setWebhookLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/repos/${repoId}/webhook/configure`, { method: 'POST' })
+      if (res.ok) {
+        await loadWebhookStatus(repoId)
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error || 'Failed to start configuration')
+      }
+    } catch {
+      setError('Failed to start configuration')
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
+
+  async function handleConfirmWebhook(repoId: number) {
+    setWebhookLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/repos/${repoId}/webhook/confirm`, { method: 'POST' })
+      if (res.ok) {
+        setSuccess('Webhook configured successfully!')
+        setTimeout(() => setSuccess(null), 3000)
+        await loadWebhookStatus(repoId)
+        onReposChange?.()
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error || 'Failed to confirm configuration')
+      }
+    } catch {
+      setError('Failed to confirm configuration')
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
+
+  async function handleDeleteWebhook(repoId: number) {
+    if (!confirm('Delete webhook configuration? Other users will be able to reconfigure it.')) {
+      return
+    }
+    setWebhookLoading(true)
+    setError(null)
+    try {
+      const res = await fetch(`/api/repos/${repoId}/webhook`, { method: 'DELETE' })
+      if (res.ok) {
+        setSuccess('Webhook deleted')
+        setTimeout(() => setSuccess(null), 3000)
+        await loadWebhookStatus(repoId)
+        onReposChange?.()
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error || 'Failed to delete webhook')
+      }
+    } catch {
+      setError('Failed to delete webhook')
+    } finally {
+      setWebhookLoading(false)
+    }
+  }
+
+  function copyToClipboard(text: string) {
+    navigator.clipboard.writeText(text)
+    setSuccess('Copied to clipboard')
+    setTimeout(() => setSuccess(null), 2000)
   }
 
   async function handleSaveEmail() {
@@ -150,6 +238,89 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
     } finally {
       setLoading(false)
     }
+  }
+
+  function renderWebhookSection(repo: Repo) {
+    if (expandedWebhook !== repo.id) return null
+    if (webhookLoading) {
+      return <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.5rem' }}>Loading...</div>
+    }
+    if (!webhookStatus) return null
+
+    const { configured, isOwner, secret, provisionalSecret, canConfigure } = webhookStatus
+
+    return (
+      <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#0d0d12', borderRadius: '4px', fontSize: '0.75rem' }}>
+        {configured && isOwner && secret && (
+          <div>
+            <div style={{ color: '#4ade80', marginBottom: '0.5rem' }}>✓ Webhook configured (you own it)</div>
+            <div style={{ color: '#888', marginBottom: '0.25rem' }}>Secret:</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+              <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all' }}>
+                {secret}
+              </code>
+              <button onClick={() => copyToClipboard(secret)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
+                Copy
+              </button>
+            </div>
+            <button
+              onClick={() => handleDeleteWebhook(repo.id)}
+              className="btn-danger"
+              style={{ marginTop: '0.5rem', fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}
+            >
+              Delete Webhook
+            </button>
+          </div>
+        )}
+
+        {configured && !isOwner && (
+          <div style={{ color: '#888' }}>
+            ✓ Webhook configured by another user. You'll receive notifications but can't manage the webhook.
+          </div>
+        )}
+
+        {!configured && canConfigure && !provisionalSecret && (
+          <div>
+            <div style={{ color: '#888', marginBottom: '0.5rem' }}>No webhook configured. Set one up to receive email notifications.</div>
+            <button
+              onClick={() => handleConfigureWebhook(repo.id)}
+              style={{ fontSize: '0.75rem', padding: '0.375rem 0.75rem' }}
+            >
+              Configure Webhook
+            </button>
+          </div>
+        )}
+
+        {provisionalSecret && (
+          <div>
+            <div style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>⏳ Configuration in progress</div>
+            <div style={{ color: '#888', marginBottom: '0.5rem' }}>
+              1. Go to your repo's Settings → Webhooks → Add webhook<br />
+              2. Set Payload URL to: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>{window.location.origin}/api/webhooks/github</code><br />
+              3. Set Content type to: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>application/json</code><br />
+              4. Set Secret to the value below<br />
+              5. Select "Just the push event"<br />
+              6. Click "Add webhook", then click Confirm below
+            </div>
+            <div style={{ color: '#888', marginBottom: '0.25rem' }}>Your webhook secret:</div>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
+              <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all' }}>
+                {provisionalSecret}
+              </code>
+              <button onClick={() => copyToClipboard(provisionalSecret)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
+                Copy
+              </button>
+            </div>
+            <button
+              onClick={() => handleConfirmWebhook(repo.id)}
+              style={{ fontSize: '0.75rem', padding: '0.375rem 0.75rem' }}
+            >
+              Confirm Webhook Configured
+            </button>
+          </div>
+        )}
+      </div>
+    )
   }
 
   return (
@@ -255,23 +426,28 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
         <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           {repos.map(repo => (
             <div key={repo.id} style={{ padding: '0.75rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
-              <div className="flex-between" style={{ marginBottom: repo.webhook_secret && expandedSecrets.has(repo.id) ? '0.5rem' : 0 }}>
-                <a
-                  href={`https://github.com/${repo.owner}/${repo.name}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                >
-                  {repo.owner}/{repo.name}
-                </a>
-                <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  {repo.webhook_secret && (
-                    <button
-                      onClick={() => toggleSecret(repo.id)}
-                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                    >
-                      {expandedSecrets.has(repo.id) ? 'Hide Secret' : 'Webhook Secret'}
-                    </button>
+              <div className="flex-between">
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <a
+                    href={`https://github.com/${repo.owner}/${repo.name}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    {repo.owner}/{repo.name}
+                  </a>
+                  {repo.webhook_configured && (
+                    <span style={{ fontSize: '0.7rem', color: repo.webhook_is_owner ? '#4ade80' : '#888' }}>
+                      {repo.webhook_is_owner ? '✓ webhook (owner)' : '✓ webhook'}
+                    </span>
                   )}
+                </div>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  <button
+                    onClick={() => handleToggleWebhook(repo.id)}
+                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                  >
+                    {expandedWebhook === repo.id ? 'Hide' : 'Webhook'}
+                  </button>
                   <button
                     onClick={() => handleRemove(repo)}
                     disabled={loading}
@@ -282,31 +458,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
                   </button>
                 </div>
               </div>
-              {repo.webhook_secret && expandedSecrets.has(repo.id) && (
-                <div style={{ fontSize: '0.75rem', color: '#888' }}>
-                  <div style={{ marginBottom: '0.25rem' }}>
-                    Use this secret when configuring the GitHub webhook:
-                  </div>
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-                    <code style={{
-                      background: '#0d0d12',
-                      padding: '0.25rem 0.5rem',
-                      borderRadius: '3px',
-                      fontSize: '0.7rem',
-                      wordBreak: 'break-all',
-                      flex: 1
-                    }}>
-                      {repo.webhook_secret}
-                    </code>
-                    <button
-                      onClick={() => copySecret(repo.webhook_secret!)}
-                      style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', flexShrink: 0 }}
-                    >
-                      Copy
-                    </button>
-                  </div>
-                </div>
-              )}
+              {renderWebhookSection(repo)}
             </div>
           ))}
         </div>

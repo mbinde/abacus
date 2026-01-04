@@ -4,6 +4,8 @@ interface Repo {
   id: number
   owner: string
   name: string
+  webhook_configured: boolean
+  webhook_is_owner: boolean
 }
 
 interface Props {
