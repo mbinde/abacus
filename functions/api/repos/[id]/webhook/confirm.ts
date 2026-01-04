@@ -21,6 +21,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   }
 
   try {
+    // Get repo info first (needed for error messages with deep links)
+    const repo = await env.DB.prepare(
+      'SELECT owner, name, webhook_secret, webhook_owner_id FROM repos WHERE id = ?'
+    ).bind(repoId).first() as { owner: string; name: string; webhook_secret: string | null; webhook_owner_id: number | null } | null
+
+    if (!repo) {
+      return new Response(JSON.stringify({ error: 'Repository not found' }), {
+        status: 404,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // Get provisional secret
     const provisional = await env.DB.prepare(
       'SELECT secret, verified_at FROM provisional_webhook_secrets WHERE repo_id = ? AND user_id = ?'
@@ -35,20 +47,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // Check that GitHub has pinged us with this secret (verification)
     if (!provisional.verified_at) {
-      return new Response(JSON.stringify({ error: 'Webhook not verified yet. GitHub sends a ping when you create the webhook. If it failed, go to your repo Settings → Webhooks, click the webhook, and click "Redeliver" on the ping event to retry.' }), {
+      const hooksUrl = `https://github.com/${repo.owner}/${repo.name}/settings/hooks`
+      return new Response(JSON.stringify({ error: `Webhook not verified yet. GitHub sends a ping when you create the webhook. If it failed, go to ${hooksUrl}, click the webhook, and click "Redeliver" on the ping event to retry.` }), {
         status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    // Check repo still exists and is available for configuration
-    const repo = await env.DB.prepare(
-      'SELECT webhook_secret, webhook_owner_id FROM repos WHERE id = ?'
-    ).bind(repoId).first() as { webhook_secret: string | null; webhook_owner_id: number | null } | null
-
-    if (!repo) {
-      return new Response(JSON.stringify({ error: 'Repository not found' }), {
-        status: 404,
         headers: { 'Content-Type': 'application/json' },
       })
     }

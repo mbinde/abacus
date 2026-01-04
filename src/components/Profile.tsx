@@ -296,13 +296,12 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
           <div>
             <div style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>⏳ Configuration in progress</div>
             <div style={{ color: '#888', marginBottom: '0.5rem' }}>
-              1. Go to your repo's Settings → Webhooks → Add webhook<br />
+              1. Go to <a href={`https://github.com/${repo.owner}/${repo.name}/settings/hooks/new`} target="_blank" rel="noopener noreferrer">Add webhook</a><br />
               2. Set Payload URL to: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>{window.location.origin}/api/webhooks/github</code><br />
               3. Set Content type to: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>application/json</code><br />
               4. Set Secret to the value below<br />
-              5. Select "Enable SSL verification"<br />
-              6. Select "Just the push event"<br />
-              7. Click "Add webhook", then click Confirm below
+              5. Select "Just the push event"<br />
+              6. Click "Add webhook", then click Confirm below
             </div>
             <div style={{ color: '#888', marginBottom: '0.25rem' }}>Your webhook secret:</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
@@ -449,9 +448,13 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                   {isPremium && (
                     <button
                       onClick={() => handleToggleWebhook(repo.id)}
-                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                      style={{
+                        fontSize: '0.75rem',
+                        padding: '0.25rem 0.5rem',
+                        background: repo.webhook_configured ? '#1a5a3a' : undefined,
+                      }}
                     >
-                      {expandedWebhook === repo.id ? 'Hide' : 'Notifications'}
+                      {expandedWebhook === repo.id ? 'Hide' : (repo.webhook_configured ? '✓ Notifications' : 'Notifications')}
                     </button>
                   )}
                   <button
