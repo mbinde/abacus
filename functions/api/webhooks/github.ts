@@ -43,6 +43,8 @@ interface UserWithEmail {
   id: number
   github_login: string
   email: string
+  notify_issues: string | null
+  notify_actions: string | null
 }
 
 // Verify GitHub webhook signature
@@ -354,12 +356,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return new Response('OK', { status: 200 })
     }
 
-    // Get users to notify (those with email who track this repo)
+    // Get users to notify with their per-repo settings
     const usersToNotify = await env.DB.prepare(`
-      SELECT DISTINCT u.id, u.github_login, u.email
+      SELECT DISTINCT u.id, u.github_login, u.email,
+        COALESCE(urs.notify_issues, 'assigned') as notify_issues,
+        COALESCE(urs.notify_actions, 'open,update,close') as notify_actions
       FROM users u
       JOIN user_repos ur ON ur.user_id = u.id
       JOIN repos r ON r.id = ur.repo_id
+      LEFT JOIN user_repo_settings urs ON urs.user_id = u.id AND urs.repo_id = r.id
       WHERE r.owner = ? AND r.name = ?
         AND u.email IS NOT NULL
     `).bind(repoOwner, repoName).all() as { results: UserWithEmail[] }
@@ -367,12 +372,39 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     // Send notifications
     if (env.RESEND_API_KEY) {
       for (const change of changes) {
-        for (const user of usersToNotify.results) {
-          // Only notify if user is assignee or creator
-          const isAssignee = change.issue.assignee === user.github_login
-          const isCreator = change.issue.created_by === user.github_login
+        // Map changeType to action
+        const action = change.changeType === 'created' ? 'open' : change.changeType
 
-          if (isAssignee || isCreator) {
+        for (const user of usersToNotify.results) {
+          const notifyIssues = user.notify_issues || 'assigned'
+          const notifyActions = (user.notify_actions || 'open,update,close').split(',')
+
+          // Skip if user doesn't want notifications for this action
+          if (!notifyActions.includes(action)) {
+            continue
+          }
+
+          // Skip if notify_issues is 'none'
+          if (notifyIssues === 'none') {
+            continue
+          }
+
+          // Check if user should be notified based on their settings
+          const isAssignee = change.issue.assignee === user.github_login
+          // TODO: implement favorites check when we have starring
+          // const isFavorite = false
+
+          let shouldNotify = false
+          if (notifyIssues === 'all') {
+            shouldNotify = true
+          } else if (notifyIssues === 'assigned') {
+            shouldNotify = isAssignee
+          } else if (notifyIssues === 'favorites') {
+            // TODO: check if issue is favorited by user
+            shouldNotify = false
+          }
+
+          if (shouldNotify) {
             const { subject, html } = formatEmail(repoFullName, change.issue, change.changeType, change.oldIssue)
             await sendEmail(user.email, subject, html, env.RESEND_API_KEY)
           }
