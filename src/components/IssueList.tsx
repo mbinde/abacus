@@ -15,15 +15,17 @@ interface Issue {
 
 interface Props {
   issues: Issue[]
+  starredIds: Set<string>
   onEdit: (issue: Issue) => void
   onDelete: (id: string) => void
+  onToggleStar: (issueId: string, starred: boolean) => void
 }
 
-type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed'
-type SortKey = 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
+type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred'
+type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
 type SortDir = 'asc' | 'desc'
 
-export default function IssueList({ issues, onEdit, onDelete }: Props) {
+export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar }: Props) {
   const [filter, setFilter] = useState<StatusFilter>(() => {
     const saved = localStorage.getItem('abacus:statusFilter')
     return (saved as StatusFilter) || 'open'
@@ -59,15 +61,28 @@ export default function IssueList({ issues, onEdit, onDelete }: Props) {
     open: issues.filter(i => i.status === 'open').length,
     in_progress: issues.filter(i => i.status === 'in_progress').length,
     closed: issues.filter(i => i.status === 'closed').length,
+    starred: issues.filter(i => starredIds.has(i.id)).length,
   }
 
   // Filter issues
-  const filtered = filter === 'all' ? issues : issues.filter(i => i.status === filter)
+  let filtered: Issue[]
+  if (filter === 'all') {
+    filtered = issues
+  } else if (filter === 'starred') {
+    filtered = issues.filter(i => starredIds.has(i.id))
+  } else {
+    filtered = issues.filter(i => i.status === filter)
+  }
 
   // Sort issues
   const sorted = [...filtered].sort((a, b) => {
     let cmp = 0
     switch (sortKey) {
+      case 'starred':
+        const aStarred = starredIds.has(a.id) ? 1 : 0
+        const bStarred = starredIds.has(b.id) ? 1 : 0
+        cmp = aStarred - bStarred
+        break
       case 'id':
         cmp = a.id.localeCompare(b.id)
         break
@@ -94,6 +109,7 @@ export default function IssueList({ issues, onEdit, onDelete }: Props) {
 
   const filterButtons: { key: StatusFilter; label: string }[] = [
     { key: 'all', label: 'All' },
+    { key: 'starred', label: '★ Starred' },
     { key: 'open', label: 'Open' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'closed', label: 'Closed' },
@@ -129,6 +145,7 @@ export default function IssueList({ issues, onEdit, onDelete }: Props) {
       <table>
         <thead>
           <tr>
+            <SortHeader column="starred" label="★" />
             <SortHeader column="id" label="ID" />
             <SortHeader column="title" label="Title" />
             <SortHeader column="type" label="Type" />
@@ -141,6 +158,12 @@ export default function IssueList({ issues, onEdit, onDelete }: Props) {
         <tbody>
           {sorted.map((issue) => (
             <tr key={issue.id}>
+              <td>
+                <StarButton
+                  starred={starredIds.has(issue.id)}
+                  onToggle={() => onToggleStar(issue.id, !starredIds.has(issue.id))}
+                />
+              </td>
               <td>
                 <code style={{ fontSize: '0.875rem' }}>{issue.id}</code>
               </td>
@@ -240,5 +263,25 @@ function TimeAgo({ date }: { date: string }) {
     <span style={{ color: '#666', fontSize: '0.875rem' }} title={then.toLocaleString()}>
       {text}
     </span>
+  )
+}
+
+function StarButton({ starred, onToggle }: { starred: boolean; onToggle: () => void }) {
+  return (
+    <button
+      onClick={onToggle}
+      style={{
+        background: 'transparent',
+        border: 'none',
+        cursor: 'pointer',
+        fontSize: '1.25rem',
+        padding: '0',
+        color: starred ? '#f5a623' : '#ccc',
+        lineHeight: 1,
+      }}
+      title={starred ? 'Unstar issue' : 'Star issue'}
+    >
+      {starred ? '★' : '☆'}
+    </button>
   )
 }

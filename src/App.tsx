@@ -75,6 +75,7 @@ export default function App() {
   const [repos, setRepos] = useState<Repo[]>([])
   const [selectedRepo, setSelectedRepo] = useState<Repo | null>(null)
   const [issues, setIssues] = useState<Issue[]>([])
+  const [starredIds, setStarredIds] = useState<Set<string>>(new Set())
   const [selectedIssue, setSelectedIssue] = useState<Issue | null>(null)
   const [view, setView] = useState<View>('list')
   const [dataLoading, setDataLoading] = useState(false)
@@ -170,6 +171,7 @@ export default function App() {
         name: selectedRepo.name,
       }))
       loadIssues()
+      loadStars()
     }
   }, [selectedRepo])
 
@@ -231,6 +233,65 @@ export default function App() {
       setError('Failed to connect to server')
     } finally {
       setDataLoading(false)
+    }
+  }
+
+  async function loadStars() {
+    if (!selectedRepo) return
+    try {
+      const res = await fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/stars`)
+      if (res.ok) {
+        const data = await res.json() as { starred: string[] }
+        setStarredIds(new Set(data.starred))
+      }
+    } catch {
+      // Silently fail - stars are optional
+    }
+  }
+
+  async function handleToggleStar(issueId: string, star: boolean) {
+    if (!selectedRepo) return
+
+    // Optimistic update
+    setStarredIds(prev => {
+      const next = new Set(prev)
+      if (star) {
+        next.add(issueId)
+      } else {
+        next.delete(issueId)
+      }
+      return next
+    })
+
+    try {
+      const res = await fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/stars`, {
+        method: star ? 'POST' : 'DELETE',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issue_id: issueId }),
+      })
+      if (!res.ok) {
+        // Revert on failure
+        setStarredIds(prev => {
+          const next = new Set(prev)
+          if (star) {
+            next.delete(issueId)
+          } else {
+            next.add(issueId)
+          }
+          return next
+        })
+      }
+    } catch {
+      // Revert on failure
+      setStarredIds(prev => {
+        const next = new Set(prev)
+        if (star) {
+          next.delete(issueId)
+        } else {
+          next.add(issueId)
+        }
+        return next
+      })
     }
   }
 
@@ -389,8 +450,10 @@ export default function App() {
           {!dataLoading && view === 'list' && (
             <IssueList
               issues={issues}
+              starredIds={starredIds}
               onEdit={(issue) => navigate('edit', issue)}
               onDelete={handleDeleteIssue}
+              onToggleStar={handleToggleStar}
             />
           )}
 
