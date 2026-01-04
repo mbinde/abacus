@@ -13,9 +13,9 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const repoId = params.id as string
 
   try {
-    // Verify the repo belongs to this user before deleting
+    // Verify the user has this repo linked
     const existing = await env.DB.prepare(
-      'SELECT id FROM repos WHERE id = ? AND user_id = ?'
+      'SELECT id FROM user_repos WHERE repo_id = ? AND user_id = ?'
     ).bind(repoId, user.id).first()
 
     if (!existing) {
@@ -25,15 +25,19 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
       })
     }
 
-    await env.DB.prepare('DELETE FROM repos WHERE id = ? AND user_id = ?')
+    // Remove the user-repo link (not the repo itself, as other users may have it)
+    await env.DB.prepare('DELETE FROM user_repos WHERE repo_id = ? AND user_id = ?')
       .bind(repoId, user.id)
       .run()
+
+    // Optionally: clean up orphaned repos (no users linked)
+    // For now, leave them - they keep webhook secrets intact
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
-  } catch (err) {
+  } catch {
     return new Response(JSON.stringify({ error: 'Failed to remove repository' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },

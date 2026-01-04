@@ -133,11 +133,11 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
       await env.SESSIONS.delete(userSessionsKey)
     }
 
-    // Delete user (CASCADE will delete their repos)
-    await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(targetUserId).run()
+    // Delete user's repo links (CASCADE should handle this, but be explicit)
+    await env.DB.prepare('DELETE FROM user_repos WHERE user_id = ?').bind(targetUserId).run()
 
-    // Also delete their repos explicitly in case CASCADE isn't working
-    await env.DB.prepare('DELETE FROM repos WHERE user_id = ?').bind(targetUserId).run()
+    // Delete user (CASCADE will delete their user_repos links)
+    await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(targetUserId).run()
 
     auditLog('USER_DELETE', currentUser, targetUserId, {
       targetLogin: targetUser.github_login,

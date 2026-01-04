@@ -6,33 +6,33 @@ interface Env {
   DB: D1Database
 }
 
+interface Repo {
+  id: number
+  owner: string
+  name: string
+  webhook_secret: string
+  created_at: string
+}
+
 // GET /api/repos - List user's repos
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { env, data } = context
   const user = (data as { user: UserContext }).user
 
   try {
-    // Ensure table exists with user_id column
-    await env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS repos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        owner TEXT NOT NULL,
-        name TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, owner, name)
-      )
-    `).run()
-
-    const result = await env.DB.prepare(
-      'SELECT * FROM repos WHERE user_id = ? ORDER BY created_at DESC'
-    ).bind(user.id).all()
+    const result = await env.DB.prepare(`
+      SELECT r.id, r.owner, r.name, r.webhook_secret, r.created_at
+      FROM repos r
+      JOIN user_repos ur ON ur.repo_id = r.id
+      WHERE ur.user_id = ?
+      ORDER BY ur.created_at DESC
+    `).bind(user.id).all()
 
     return new Response(JSON.stringify({ repos: result.results }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
-  } catch (err) {
+  } catch {
     return new Response(JSON.stringify({ error: 'Database error' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
@@ -87,27 +87,37 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       })
     }
 
-    // Ensure table exists
-    await env.DB.prepare(`
-      CREATE TABLE IF NOT EXISTS repos (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        user_id INTEGER,
-        owner TEXT NOT NULL,
-        name TEXT NOT NULL,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(user_id, owner, name)
-      )
-    `).run()
+    // Check if repo already exists in global repos table
+    let repo = await env.DB.prepare(
+      'SELECT * FROM repos WHERE owner = ? AND name = ?'
+    ).bind(owner, name).first() as Repo | null
 
-    // Generate webhook secret for this repo
-    const webhookSecret = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '')
+    if (!repo) {
+      // Create new repo with webhook secret
+      const webhookSecret = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '')
+      repo = await env.DB.prepare(
+        'INSERT INTO repos (owner, name, webhook_secret) VALUES (?, ?, ?) RETURNING *'
+      ).bind(owner, name, webhookSecret).first() as Repo
+    }
 
-    // Insert repo with user_id and webhook_secret
-    const result = await env.DB.prepare(
-      'INSERT INTO repos (user_id, owner, name, webhook_secret) VALUES (?, ?, ?, ?) RETURNING *'
-    ).bind(user.id, owner, name, webhookSecret).first()
+    // Check if user already has this repo
+    const existing = await env.DB.prepare(
+      'SELECT * FROM user_repos WHERE user_id = ? AND repo_id = ?'
+    ).bind(user.id, repo.id).first()
 
-    return new Response(JSON.stringify({ repo: result }), {
+    if (existing) {
+      return new Response(JSON.stringify({ error: 'Repository already added' }), {
+        status: 409,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Link user to repo
+    await env.DB.prepare(
+      'INSERT INTO user_repos (user_id, repo_id) VALUES (?, ?)'
+    ).bind(user.id, repo.id).run()
+
+    return new Response(JSON.stringify({ repo }), {
       status: 201,
       headers: { 'Content-Type': 'application/json' },
     })

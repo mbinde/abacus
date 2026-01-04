@@ -234,28 +234,33 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const repoFullName = data.repository.full_name
 
   try {
-    // Look up the webhook secret for this repo
-    const repoData = await env.DB.prepare(`
-      SELECT r.webhook_secret, u.github_token_encrypted
-      FROM repos r
-      JOIN users u ON r.user_id = u.id
-      WHERE r.owner = ? AND r.name = ?
-      LIMIT 1
-    `).bind(repoOwner, repoName).first() as { webhook_secret: string | null; github_token_encrypted: string } | null
+    // Look up the webhook secret for this repo (now global, not per-user)
+    const repo = await env.DB.prepare(
+      'SELECT id, webhook_secret FROM repos WHERE owner = ? AND name = ?'
+    ).bind(repoOwner, repoName).first() as { id: number; webhook_secret: string } | null
 
-    if (!repoData) {
-      // No user tracking this repo, nothing to do
+    if (!repo) {
+      // No one tracking this repo, nothing to do
       return new Response('OK', { status: 200 })
     }
 
     // Verify webhook signature against per-repo secret
-    if (!repoData.webhook_secret) {
-      return new Response('Webhook not configured for this repo', { status: 400 })
-    }
-
-    const isValid = await verifySignature(payload, signature, repoData.webhook_secret)
+    const isValid = await verifySignature(payload, signature, repo.webhook_secret)
     if (!isValid) {
       return new Response('Invalid signature', { status: 401 })
+    }
+
+    // Get a user's token to fetch the issues (any user with this repo will do)
+    const userWithToken = await env.DB.prepare(`
+      SELECT u.github_token_encrypted
+      FROM users u
+      JOIN user_repos ur ON ur.user_id = u.id
+      WHERE ur.repo_id = ?
+      LIMIT 1
+    `).bind(repo.id).first() as { github_token_encrypted: string } | null
+
+    if (!userWithToken) {
+      return new Response('OK', { status: 200 })
     }
 
     // Get previous state from database
@@ -263,7 +268,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       'SELECT issues_hash, issues_snapshot FROM webhook_state WHERE repo_owner = ? AND repo_name = ?'
     ).bind(repoOwner, repoName).first() as WebhookState | null
 
-    const token = await decryptToken(repoData.github_token_encrypted, env.TOKEN_ENCRYPTION_KEY)
+    const token = await decryptToken(userWithToken.github_token_encrypted, env.TOKEN_ENCRYPTION_KEY)
 
     const issuesRes = await fetch(
       `https://api.github.com/repos/${repoFullName}/contents/.beads/issues.jsonl`,
@@ -320,7 +325,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const usersToNotify = await env.DB.prepare(`
       SELECT DISTINCT u.id, u.github_login, u.email, u.email_notifications
       FROM users u
-      JOIN repos r ON r.user_id = u.id
+      JOIN user_repos ur ON ur.user_id = u.id
+      JOIN repos r ON r.id = ur.repo_id
       WHERE r.owner = ? AND r.name = ?
         AND u.email IS NOT NULL
         AND u.email_notifications = 1
