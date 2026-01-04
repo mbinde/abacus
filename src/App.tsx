@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState, useEffect, useCallback, useRef } from 'react'
 import Login from './components/Login'
 import RepoSelector from './components/RepoSelector'
 import IssueList from './components/IssueList'
@@ -35,6 +35,39 @@ interface User {
 
 type View = 'list' | 'create' | 'edit' | 'admin'
 
+interface AppState {
+  view: View
+  issueId?: string
+}
+
+function parseUrlState(): AppState {
+  const path = window.location.pathname
+  if (path === '/admin') {
+    return { view: 'admin' }
+  }
+  if (path === '/new') {
+    return { view: 'create' }
+  }
+  const editMatch = path.match(/^\/edit\/(.+)$/)
+  if (editMatch) {
+    return { view: 'edit', issueId: editMatch[1] }
+  }
+  return { view: 'list' }
+}
+
+function buildUrl(state: AppState): string {
+  switch (state.view) {
+    case 'admin':
+      return '/admin'
+    case 'create':
+      return '/new'
+    case 'edit':
+      return `/edit/${state.issueId}`
+    default:
+      return '/'
+  }
+}
+
 export default function App() {
   const [user, setUser] = useState<User | null>(null)
   const [loading, setLoading] = useState(true)
@@ -46,6 +79,70 @@ export default function App() {
   const [view, setView] = useState<View>('list')
   const [dataLoading, setDataLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const isPopState = useRef(false)
+  const pendingIssueId = useRef<string | null>(null)
+
+  // Navigate with history support
+  const navigate = useCallback((newView: View, issue?: Issue | null) => {
+    const state: AppState = { view: newView, issueId: issue?.id }
+    const url = buildUrl(state)
+
+    if (!isPopState.current) {
+      window.history.pushState(state, '', url)
+    }
+    isPopState.current = false
+
+    setView(newView)
+    setSelectedIssue(issue ?? null)
+  }, [])
+
+  // Handle browser back/forward
+  useEffect(() => {
+    const handlePopState = () => {
+      isPopState.current = true
+      const state = parseUrlState()
+      setView(state.view)
+
+      if (state.view === 'edit' && state.issueId) {
+        // Find issue in loaded issues, or store for later lookup
+        const issue = issues.find(i => i.id === state.issueId)
+        if (issue) {
+          setSelectedIssue(issue)
+        } else {
+          pendingIssueId.current = state.issueId
+        }
+      } else {
+        setSelectedIssue(null)
+      }
+    }
+
+    window.addEventListener('popstate', handlePopState)
+    return () => window.removeEventListener('popstate', handlePopState)
+  }, [issues])
+
+  // Resolve pending issue when issues load
+  useEffect(() => {
+    if (pendingIssueId.current && issues.length > 0) {
+      const issue = issues.find(i => i.id === pendingIssueId.current)
+      if (issue) {
+        setSelectedIssue(issue)
+      }
+      pendingIssueId.current = null
+    }
+  }, [issues])
+
+  // Initialize state from URL on mount
+  useEffect(() => {
+    const state = parseUrlState()
+    if (state.view !== 'list') {
+      setView(state.view)
+      if (state.issueId) {
+        pendingIssueId.current = state.issueId
+      }
+    }
+    // Replace current history entry with state
+    window.history.replaceState(state, '', buildUrl(state))
+  }, [])
 
   useEffect(() => {
     // Check for OAuth error in URL
@@ -53,7 +150,7 @@ export default function App() {
     const errorParam = params.get('error')
     if (errorParam) {
       setAuthError(decodeURIComponent(errorParam))
-      // Clean up URL
+      // Clean up URL but preserve path
       window.history.replaceState({}, '', window.location.pathname)
     }
     checkAuth()
@@ -176,8 +273,7 @@ export default function App() {
 
       if (res.ok) {
         await loadIssues()
-        setView('list')
-        setSelectedIssue(null)
+        navigate('list')
       } else {
         const data = await res.json() as { conflict?: boolean; serverVersion?: Issue; error?: string }
         if (data.conflict && data.serverVersion) {
@@ -234,7 +330,7 @@ export default function App() {
   if (view === 'admin') {
     return (
       <div className="container">
-        <AdminPanel onBack={() => setView('list')} />
+        <AdminPanel onBack={() => navigate('list')} />
       </div>
     )
   }
@@ -245,7 +341,7 @@ export default function App() {
         <h1>Abacus</h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           {user.role === 'admin' && (
-            <button onClick={() => setView('admin')}>
+            <button onClick={() => navigate('admin')}>
               Admin
             </button>
           )}
@@ -277,12 +373,12 @@ export default function App() {
           <div className="flex-between mb-2">
             <h2>{selectedRepo.owner}/{selectedRepo.name}</h2>
             {view === 'list' && (
-              <button onClick={() => { setSelectedIssue(null); setView('create') }}>
+              <button onClick={() => navigate('create')}>
                 New Issue
               </button>
             )}
             {view !== 'list' && (
-              <button onClick={() => { setView('list'); setSelectedIssue(null) }}>
+              <button onClick={() => navigate('list')}>
                 Back to List
               </button>
             )}
@@ -293,7 +389,7 @@ export default function App() {
           {!dataLoading && view === 'list' && (
             <IssueList
               issues={issues}
-              onEdit={(issue) => { setSelectedIssue(issue); setView('edit') }}
+              onEdit={(issue) => navigate('edit', issue)}
               onDelete={handleDeleteIssue}
             />
           )}
@@ -302,7 +398,7 @@ export default function App() {
             <IssueForm
               issue={selectedIssue}
               onSave={handleSaveIssue}
-              onCancel={() => { setView('list'); setSelectedIssue(null) }}
+              onCancel={() => navigate('list')}
             />
           )}
         </>
