@@ -13,19 +13,25 @@ interface Issue {
   parent?: string
 }
 
+interface BulkUpdate {
+  status?: 'open' | 'closed' | 'in_progress'
+  priority?: number
+}
+
 interface Props {
   issues: Issue[]
   starredIds: Set<string>
   onEdit: (issue: Issue) => void
   onDelete: (id: string) => void
   onToggleStar: (issueId: string, starred: boolean) => void
+  onBulkUpdate?: (issueIds: string[], updates: BulkUpdate) => Promise<void>
 }
 
 type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred'
 type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
 type SortDir = 'asc' | 'desc'
 
-export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar }: Props) {
+export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate }: Props) {
   const [filter, setFilter] = useState<StatusFilter>(() => {
     const saved = localStorage.getItem('abacus:statusFilter')
     return (saved as StatusFilter) || 'open'
@@ -35,6 +41,8 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   const [searchQuery, setSearchQuery] = useState('')
   const [selectedIndex, setSelectedIndex] = useState(-1)
   const [showHelp, setShowHelp] = useState(false)
+  const [checkedIds, setCheckedIds] = useState<Set<string>>(new Set())
+  const [bulkLoading, setBulkLoading] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const tableRef = useRef<HTMLTableSectionElement>(null)
 
@@ -156,6 +164,12 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           onToggleStar(issue.id, !starredIds.has(issue.id))
         }
         break
+      case 'x': // Toggle checkbox on selected
+        if (selectedIndex >= 0 && selectedIndex < sorted.length) {
+          e.preventDefault()
+          toggleCheck(sorted[selectedIndex].id)
+        }
+        break
       case '/': // Focus search
         e.preventDefault()
         searchInputRef.current?.focus()
@@ -188,6 +202,42 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   useEffect(() => {
     setSelectedIndex(-1)
   }, [filter, searchQuery])
+
+  // Clear checked items when issues change
+  useEffect(() => {
+    setCheckedIds(new Set())
+  }, [issues])
+
+  const toggleCheck = (id: string) => {
+    setCheckedIds(prev => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const toggleAllChecked = () => {
+    if (checkedIds.size === sorted.length) {
+      setCheckedIds(new Set())
+    } else {
+      setCheckedIds(new Set(sorted.map(i => i.id)))
+    }
+  }
+
+  const handleBulkAction = async (updates: BulkUpdate) => {
+    if (!onBulkUpdate || checkedIds.size === 0) return
+    setBulkLoading(true)
+    try {
+      await onBulkUpdate(Array.from(checkedIds), updates)
+      setCheckedIds(new Set())
+    } finally {
+      setBulkLoading(false)
+    }
+  }
 
   const filterButtons: { key: StatusFilter; label: string }[] = [
     { key: 'all', label: 'All' },
@@ -255,9 +305,29 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           </button>
         </div>
       </div>
+      {checkedIds.size > 0 && onBulkUpdate && (
+        <BulkActionsBar
+          count={checkedIds.size}
+          loading={bulkLoading}
+          onClose={() => handleBulkAction({ status: 'closed' })}
+          onSetStatus={(status) => handleBulkAction({ status })}
+          onSetPriority={(priority) => handleBulkAction({ priority })}
+          onClear={() => setCheckedIds(new Set())}
+        />
+      )}
       <table>
         <thead>
           <tr>
+            {onBulkUpdate && (
+              <th style={{ width: '40px' }}>
+                <input
+                  type="checkbox"
+                  checked={checkedIds.size === sorted.length && sorted.length > 0}
+                  onChange={toggleAllChecked}
+                  title="Select all"
+                />
+              </th>
+            )}
             <SortHeader column="starred" label="★" />
             <SortHeader column="id" label="ID" />
             <SortHeader column="title" label="Title" />
@@ -278,6 +348,16 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
               }}
               onClick={() => setSelectedIndex(index)}
             >
+              {onBulkUpdate && (
+                <td>
+                  <input
+                    type="checkbox"
+                    checked={checkedIds.has(issue.id)}
+                    onChange={() => toggleCheck(issue.id)}
+                    onClick={(e) => e.stopPropagation()}
+                  />
+                </td>
+              )}
               <td>
                 <StarButton
                   starred={starredIds.has(issue.id)}
@@ -406,10 +486,88 @@ function StarButton({ starred, onToggle }: { starred: boolean; onToggle: () => v
   )
 }
 
+function BulkActionsBar({
+  count,
+  loading,
+  onClose,
+  onSetStatus,
+  onSetPriority,
+  onClear,
+}: {
+  count: number
+  loading: boolean
+  onClose: () => void
+  onSetStatus: (status: 'open' | 'closed' | 'in_progress') => void
+  onSetPriority: (priority: number) => void
+  onClear: () => void
+}) {
+  return (
+    <div style={{
+      display: 'flex',
+      alignItems: 'center',
+      gap: '0.75rem',
+      padding: '0.75rem',
+      marginBottom: '0.75rem',
+      background: '#1e3a5f',
+      borderRadius: '4px',
+      flexWrap: 'wrap',
+    }}>
+      <span style={{ fontWeight: 600 }}>{count} selected</span>
+      <div style={{ display: 'flex', gap: '0.5rem', flexWrap: 'wrap' }}>
+        <button
+          onClick={onClose}
+          disabled={loading}
+          style={{ padding: '0.25rem 0.75rem', fontSize: '0.875rem' }}
+        >
+          Close
+        </button>
+        <select
+          onChange={(e) => e.target.value && onSetStatus(e.target.value as 'open' | 'in_progress')}
+          disabled={loading}
+          defaultValue=""
+          style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+        >
+          <option value="" disabled>Set Status...</option>
+          <option value="open">Open</option>
+          <option value="in_progress">In Progress</option>
+        </select>
+        <select
+          onChange={(e) => e.target.value && onSetPriority(Number(e.target.value))}
+          disabled={loading}
+          defaultValue=""
+          style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
+        >
+          <option value="" disabled>Set Priority...</option>
+          <option value="1">P1 - Critical</option>
+          <option value="2">P2 - High</option>
+          <option value="3">P3 - Medium</option>
+          <option value="4">P4 - Low</option>
+          <option value="5">P5 - Lowest</option>
+        </select>
+      </div>
+      <button
+        onClick={onClear}
+        disabled={loading}
+        style={{
+          marginLeft: 'auto',
+          padding: '0.25rem 0.5rem',
+          fontSize: '0.875rem',
+          background: 'transparent',
+          border: '1px solid #666',
+        }}
+      >
+        Clear
+      </button>
+      {loading && <span style={{ color: '#888' }}>Updating...</span>}
+    </div>
+  )
+}
+
 function HelpModal({ onClose }: { onClose: () => void }) {
   const shortcuts = [
     { key: 'j', description: 'Move down' },
     { key: 'k', description: 'Move up' },
+    { key: 'x', description: 'Toggle checkbox on selected' },
     { key: 'e / Enter', description: 'Edit selected issue' },
     { key: 's', description: 'Star/unstar selected issue' },
     { key: '/', description: 'Focus search' },

@@ -14,6 +14,14 @@ interface Repo {
   webhook_is_owner: boolean
 }
 
+interface Comment {
+  id: number
+  issue_id: string
+  author: string
+  text: string
+  created_at: string
+}
+
 interface Issue {
   id: string
   title: string
@@ -26,6 +34,7 @@ interface Issue {
   closed_at?: string
   parent?: string
   sha?: string
+  comments?: Comment[]
 }
 
 interface User {
@@ -392,6 +401,31 @@ export default function App() {
     }
   }
 
+  async function handleBulkUpdate(issueIds: string[], updates: { status?: string; priority?: number }) {
+    if (!selectedRepo) return
+    setDataLoading(true)
+    setError(null)
+
+    try {
+      const res = await fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/bulk`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ issue_ids: issueIds, updates }),
+      })
+
+      if (res.ok) {
+        await loadIssues()
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error || 'Failed to bulk update issues')
+      }
+    } catch {
+      setError('Failed to bulk update issues')
+    } finally {
+      setDataLoading(false)
+    }
+  }
+
   async function handleDeleteIssue(id: string) {
     if (!selectedRepo || !confirm('Delete this issue?')) return
     setDataLoading(true)
@@ -517,6 +551,7 @@ export default function App() {
               onEdit={(issue) => navigate('edit', issue)}
               onDelete={handleDeleteIssue}
               onToggleStar={handleToggleStar}
+              onBulkUpdate={handleBulkUpdate}
             />
           )}
 
@@ -525,6 +560,10 @@ export default function App() {
               issue={selectedIssue}
               onSave={handleSaveIssue}
               onCancel={() => navigate('list')}
+              repoOwner={selectedRepo.owner}
+              repoName={selectedRepo.name}
+              userLogin={user.login}
+              onCommentAdded={loadIssues}
             />
           )}
         </>

@@ -1,5 +1,13 @@
 import { useState, FormEvent } from 'react'
 
+interface Comment {
+  id: number
+  issue_id: string
+  author: string
+  text: string
+  created_at: string
+}
+
 interface Issue {
   id: string
   title: string
@@ -12,20 +20,28 @@ interface Issue {
   closed_at?: string
   parent?: string
   sha?: string
+  comments?: Comment[]
 }
 
 interface Props {
   issue: Issue | null
   onSave: (issue: Partial<Issue>) => void
   onCancel: () => void
+  repoOwner?: string
+  repoName?: string
+  userLogin?: string
+  onCommentAdded?: () => void
 }
 
-export default function IssueForm({ issue, onSave, onCancel }: Props) {
+export default function IssueForm({ issue, onSave, onCancel, repoOwner, repoName, userLogin, onCommentAdded }: Props) {
   const [title, setTitle] = useState(issue?.title || '')
   const [description, setDescription] = useState(issue?.description || '')
   const [issueType, setIssueType] = useState<Issue['issue_type']>(issue?.issue_type || 'task')
   const [status, setStatus] = useState<Issue['status']>(issue?.status || 'open')
   const [priority, setPriority] = useState(issue?.priority || 3)
+  const [newComment, setNewComment] = useState('')
+  const [commentLoading, setCommentLoading] = useState(false)
+  const [commentError, setCommentError] = useState<string | null>(null)
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -46,7 +62,36 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
     onSave(data)
   }
 
+  async function handleAddComment(e: FormEvent) {
+    e.preventDefault()
+    if (!newComment.trim() || !repoOwner || !repoName || !issue) return
+
+    setCommentLoading(true)
+    setCommentError(null)
+
+    try {
+      const res = await fetch(`/api/repos/${repoOwner}/${repoName}/issues/${issue.id}/comments`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ text: newComment.trim() }),
+      })
+
+      if (res.ok) {
+        setNewComment('')
+        onCommentAdded?.()
+      } else {
+        const data = await res.json() as { error?: string }
+        setCommentError(data.error || 'Failed to add comment')
+      }
+    } catch {
+      setCommentError('Failed to add comment')
+    } finally {
+      setCommentLoading(false)
+    }
+  }
+
   const isNew = !issue
+  const comments = issue?.comments || []
 
   return (
     <div className="card">
@@ -126,6 +171,57 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
           </button>
         </div>
       </form>
+
+      {!isNew && (
+        <div style={{ marginTop: '2rem', borderTop: '1px solid #333', paddingTop: '1.5rem' }}>
+          <h4 style={{ marginBottom: '1rem' }}>Comments ({comments.length})</h4>
+
+          {comments.length > 0 && (
+            <div style={{ marginBottom: '1rem' }}>
+              {comments.map((comment) => (
+                <div
+                  key={comment.id}
+                  style={{
+                    padding: '0.75rem',
+                    marginBottom: '0.5rem',
+                    background: '#1a1a24',
+                    borderRadius: '4px',
+                    border: '1px solid #2a2a3a',
+                  }}
+                >
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.5rem' }}>
+                    <span style={{ fontWeight: 600, color: '#4dc3ff' }}>@{comment.author}</span>
+                    <span style={{ color: '#666', fontSize: '0.875rem' }}>
+                      {new Date(comment.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>{comment.text}</div>
+                </div>
+              ))}
+            </div>
+          )}
+
+          {commentError && <div className="error">{commentError}</div>}
+
+          <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem' }}>
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Add a comment..."
+              rows={2}
+              style={{ flex: 1 }}
+              disabled={commentLoading}
+            />
+            <button
+              type="submit"
+              disabled={commentLoading || !newComment.trim()}
+              style={{ alignSelf: 'flex-end' }}
+            >
+              {commentLoading ? '...' : 'Comment'}
+            </button>
+          </form>
+        </div>
+      )}
     </div>
   )
 }

@@ -2,6 +2,14 @@
 
 import type { UserContext } from '../../../../_middleware'
 
+interface Comment {
+  id: number
+  issue_id: string
+  author: string
+  text: string
+  created_at: string
+}
+
 interface Issue {
   id: string
   title: string
@@ -14,6 +22,7 @@ interface Issue {
   closed_at?: string
   parent?: string
   sha?: string
+  comments?: Comment[]
 }
 
 // Retry configuration
@@ -311,6 +320,7 @@ function normalizeIssue(obj: Record<string, unknown>, sha?: string): Issue {
     closed_at: obj.closed_at ? String(obj.closed_at) : undefined,
     parent: obj.parent ? String(obj.parent) : undefined,
     sha,
+    comments: Array.isArray(obj.comments) ? obj.comments as Comment[] : undefined,
   }
 }
 
@@ -354,7 +364,7 @@ function generateId(prefix: string): string {
 }
 
 function serializeJsonlIssue(issue: Issue): string {
-  return JSON.stringify({
+  const obj: Record<string, unknown> = {
     id: issue.id,
     title: issue.title,
     description: issue.description || '',
@@ -363,7 +373,11 @@ function serializeJsonlIssue(issue: Issue): string {
     issue_type: issue.issue_type,
     created_at: issue.created_at,
     updated_at: new Date().toISOString(),
-  })
+  }
+  if (issue.comments && issue.comments.length > 0) {
+    obj.comments = issue.comments
+  }
+  return JSON.stringify(obj)
 }
 
 function serializeMarkdownIssue(issue: Issue): string {
