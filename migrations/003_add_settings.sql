@@ -7,5 +7,5 @@ CREATE TABLE IF NOT EXISTS settings (
   updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
 
--- Default to open registration
-INSERT INTO settings (key, value) VALUES ('registration_mode', 'open');
+-- Default to closed registration
+INSERT INTO settings (key, value) VALUES ('registration_mode', 'closed');

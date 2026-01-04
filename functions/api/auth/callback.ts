@@ -116,13 +116,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const countResult = await env.DB.prepare('SELECT COUNT(*) as count FROM users').first() as { count: number }
     const isFirstUser = countResult.count === 0
 
-    // Check registration mode (first user always allowed)
+    // Check registration mode (first user always allowed, default to closed)
     if (!isFirstUser) {
       const regMode = await env.DB.prepare(
         "SELECT value FROM settings WHERE key = 'registration_mode'"
       ).first() as { value: string } | null
 
-      if (regMode?.value === 'closed') {
+      // Default to closed if no setting exists
+      if (!regMode || regMode.value === 'closed') {
         return Response.redirect(`${url.origin}/?error=${encodeURIComponent('Registration is closed. Contact an administrator for access.')}`)
       }
     }
