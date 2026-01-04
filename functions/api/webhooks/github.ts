@@ -371,6 +371,25 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // Send notifications
     if (env.RESEND_API_KEY) {
+      // Get all starred issues for this repo to check favorites
+      const issueIds = changes.map(c => c.issue.id)
+      const userIds = usersToNotify.results.map(u => u.id)
+
+      // Build a set of "userId:issueId" for quick lookup
+      const starredSet = new Set<string>()
+      if (userIds.length > 0 && issueIds.length > 0) {
+        const starsResult = await env.DB.prepare(`
+          SELECT user_id, issue_id FROM stars
+          WHERE repo_owner = ? AND repo_name = ?
+            AND user_id IN (${userIds.map(() => '?').join(',')})
+            AND issue_id IN (${issueIds.map(() => '?').join(',')})
+        `).bind(repoOwner, repoName, ...userIds, ...issueIds).all() as { results: Array<{ user_id: number; issue_id: string }> }
+
+        for (const star of starsResult.results) {
+          starredSet.add(`${star.user_id}:${star.issue_id}`)
+        }
+      }
+
       for (const change of changes) {
         // Map changeType to action
         const action = change.changeType === 'created' ? 'open' : change.changeType
@@ -391,8 +410,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
           // Check if user should be notified based on their settings
           const isAssignee = change.issue.assignee === user.github_login
-          // TODO: implement favorites check when we have starring
-          // const isFavorite = false
+          const isFavorite = starredSet.has(`${user.id}:${change.issue.id}`)
 
           let shouldNotify = false
           if (notifyIssues === 'all') {
@@ -400,8 +418,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           } else if (notifyIssues === 'assigned') {
             shouldNotify = isAssignee
           } else if (notifyIssues === 'favorites') {
-            // TODO: check if issue is favorited by user
-            shouldNotify = false
+            shouldNotify = isFavorite
           }
 
           if (shouldNotify) {
