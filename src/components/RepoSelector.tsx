@@ -67,7 +67,7 @@ export default function RepoSelector({ repos, selected, onSelect, onAdd }: Props
               ))}
             </select>
           ) : (
-            <span style={{ color: '#666' }}>No repos added yet</span>
+            <span style={{ color: '#888' }}>No repos added yet</span>
           )}
         </div>
         <button onClick={() => setShowAddForm(!showAddForm)}>

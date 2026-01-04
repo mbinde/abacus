@@ -99,10 +99,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       )
     `).run()
 
-    // Insert repo with user_id
+    // Generate webhook secret for this repo
+    const webhookSecret = crypto.randomUUID() + crypto.randomUUID().replace(/-/g, '')
+
+    // Insert repo with user_id and webhook_secret
     const result = await env.DB.prepare(
-      'INSERT INTO repos (user_id, owner, name) VALUES (?, ?, ?) RETURNING *'
-    ).bind(user.id, owner, name).first()
+      'INSERT INTO repos (user_id, owner, name, webhook_secret) VALUES (?, ?, ?, ?) RETURNING *'
+    ).bind(user.id, owner, name, webhookSecret).first()
 
     return new Response(JSON.stringify({ repo: result }), {
       status: 201,

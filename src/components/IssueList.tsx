@@ -49,7 +49,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
 
   if (issues.length === 0) {
     return (
-      <div className="card" style={{ textAlign: 'center', color: '#666' }}>
+      <div className="card" style={{ textAlign: 'center', color: '#888' }}>
         No issues found. Create one to get started!
       </div>
     )
@@ -134,8 +134,8 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
             style={{
               padding: '0.375rem 0.75rem',
               fontSize: '0.875rem',
-              background: filter === key ? '#0066cc' : '#e0e0e0',
-              color: filter === key ? 'white' : '#333',
+              background: filter === key ? '#0077cc' : '#2a2a3a',
+              color: filter === key ? 'white' : '#aaa',
             }}
           >
             {label} ({counts[key]})
@@ -171,7 +171,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
                 <span
                   style={{
                     cursor: 'pointer',
-                    color: '#0066cc',
+                    color: '#4dc3ff',
                     textDecoration: issue.status === 'closed' ? 'line-through' : 'none',
                     opacity: issue.status === 'closed' ? 0.6 : 1
                   }}
@@ -206,10 +206,10 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
                   </button>
                   <button
                     onClick={() => onDelete(issue.id)}
+                    className="btn-danger"
                     style={{
                       padding: '0.25rem 0.5rem',
-                      fontSize: '0.875rem',
-                      background: '#cc0000'
+                      fontSize: '0.875rem'
                     }}
                   >
                     Delete
@@ -226,11 +226,11 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
 
 function PriorityIndicator({ priority }: { priority: number }) {
   const labels = ['', 'Critical', 'High', 'Medium', 'Low', 'Lowest']
-  const colors = ['', '#cc0000', '#ff6600', '#ffcc00', '#66cc66', '#999999']
+  const colors = ['', '#ff6b6b', '#ffb464', '#ffd93d', '#4ade80', '#888888']
 
   return (
     <span style={{
-      color: colors[priority] || '#666',
+      color: colors[priority] || '#888',
       fontWeight: priority <= 2 ? 600 : 400
     }}>
       {labels[priority] || `P${priority}`}
@@ -260,7 +260,7 @@ function TimeAgo({ date }: { date: string }) {
   }
 
   return (
-    <span style={{ color: '#666', fontSize: '0.875rem' }} title={then.toLocaleString()}>
+    <span style={{ color: '#888', fontSize: '0.875rem' }} title={then.toLocaleString()}>
       {text}
     </span>
   )
@@ -276,7 +276,7 @@ function StarButton({ starred, onToggle }: { starred: boolean; onToggle: () => v
         cursor: 'pointer',
         fontSize: '1.25rem',
         padding: '0',
-        color: starred ? '#f5a623' : '#ccc',
+        color: starred ? '#ffb464' : '#555',
         lineHeight: 1,
       }}
       title={starred ? 'Unstar issue' : 'Star issue'}

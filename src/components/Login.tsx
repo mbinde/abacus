@@ -18,7 +18,7 @@ export default function Login({ error }: Props) {
     }}>
       <div className="card" style={{ width: '100%', maxWidth: '400px', textAlign: 'center' }}>
         <h1 className="mb-2">Abacus</h1>
-        <p className="mb-3" style={{ color: '#666' }}>
+        <p className="mb-3" style={{ color: '#888' }}>
           Issue tracker for beads-enabled repositories
         </p>
 

@@ -4,7 +4,6 @@ import { decryptToken } from '../../lib/crypto'
 
 interface Env {
   DB: D1Database
-  GITHUB_WEBHOOK_SECRET: string
   RESEND_API_KEY: string
   TOKEN_ENCRYPTION_KEY: string
 }
@@ -209,19 +208,8 @@ function formatEmail(
 export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env } = context
 
-  // Verify webhook signature
   const signature = request.headers.get('X-Hub-Signature-256')
   const payload = await request.text()
-
-  if (!env.GITHUB_WEBHOOK_SECRET) {
-    console.error('GITHUB_WEBHOOK_SECRET not configured')
-    return new Response('Webhook secret not configured', { status: 500 })
-  }
-
-  const isValid = await verifySignature(payload, signature, env.GITHUB_WEBHOOK_SECRET)
-  if (!isValid) {
-    return new Response('Invalid signature', { status: 401 })
-  }
 
   // Only handle push events
   const event = request.headers.get('X-GitHub-Event')
@@ -246,27 +234,36 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const repoFullName = data.repository.full_name
 
   try {
+    // Look up the webhook secret for this repo
+    const repoData = await env.DB.prepare(`
+      SELECT r.webhook_secret, u.github_token_encrypted
+      FROM repos r
+      JOIN users u ON r.user_id = u.id
+      WHERE r.owner = ? AND r.name = ?
+      LIMIT 1
+    `).bind(repoOwner, repoName).first() as { webhook_secret: string | null; github_token_encrypted: string } | null
+
+    if (!repoData) {
+      // No user tracking this repo, nothing to do
+      return new Response('OK', { status: 200 })
+    }
+
+    // Verify webhook signature against per-repo secret
+    if (!repoData.webhook_secret) {
+      return new Response('Webhook not configured for this repo', { status: 400 })
+    }
+
+    const isValid = await verifySignature(payload, signature, repoData.webhook_secret)
+    if (!isValid) {
+      return new Response('Invalid signature', { status: 401 })
+    }
+
     // Get previous state from database
     const prevState = await env.DB.prepare(
       'SELECT issues_hash, issues_snapshot FROM webhook_state WHERE repo_owner = ? AND repo_name = ?'
     ).bind(repoOwner, repoName).first() as WebhookState | null
 
-    // Fetch current issues.jsonl from GitHub
-    // We need a token - find a user who has this repo
-    const repoUser = await env.DB.prepare(`
-      SELECT u.github_token_encrypted
-      FROM repos r
-      JOIN users u ON r.user_id = u.id
-      WHERE r.owner = ? AND r.name = ?
-      LIMIT 1
-    `).bind(repoOwner, repoName).first() as { github_token_encrypted: string } | null
-
-    if (!repoUser) {
-      // No user tracking this repo, nothing to do
-      return new Response('OK', { status: 200 })
-    }
-
-    const token = await decryptToken(repoUser.github_token_encrypted, env.TOKEN_ENCRYPTION_KEY)
+    const token = await decryptToken(repoData.github_token_encrypted, env.TOKEN_ENCRYPTION_KEY)
 
     const issuesRes = await fetch(
       `https://api.github.com/repos/${repoFullName}/contents/.beads/issues.jsonl`,

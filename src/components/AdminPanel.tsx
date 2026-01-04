@@ -133,7 +133,7 @@ export default function AdminPanel({ onBack }: Props) {
 
       {error && <div className="error mb-2">{error}</div>}
 
-      <div className="mb-3" style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+      <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
         <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Settings</h3>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
@@ -178,7 +178,7 @@ export default function AdminPanel({ onBack }: Props) {
                     />
                     <div>
                       <div>{user.github_name || user.github_login}</div>
-                      <div style={{ fontSize: '0.75rem', color: '#666' }}>
+                      <div style={{ fontSize: '0.75rem', color: '#888' }}>
                         @{user.github_login}
                       </div>
                     </div>
@@ -201,8 +201,8 @@ export default function AdminPanel({ onBack }: Props) {
                 <td>
                   <button
                     onClick={() => handleDelete(user.id, user.github_login)}
+                    className="btn-danger"
                     style={{
-                      background: '#dc3545',
                       fontSize: '0.75rem',
                       padding: '0.25rem 0.5rem'
                     }}

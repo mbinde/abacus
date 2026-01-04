@@ -7,8 +7,8 @@
 body {
   font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
   line-height: 1.5;
-  color: #333;
-  background: #f5f5f5;
+  color: #e0e0e0;
+  background: #0a0a0f;
 }
 
 .container {
@@ -22,44 +22,67 @@ button {
   padding: 0.5rem 1rem;
   border: none;
   border-radius: 4px;
-  background: #0066cc;
+  background: #0077cc;
   color: white;
   font-size: 1rem;
 }
 
 button:hover {
-  background: #0052a3;
+  background: #0099ee;
 }
 
 button:disabled {
-  background: #ccc;
+  background: #333;
+  color: #666;
   cursor: not-allowed;
 }
 
 input, select, textarea {
   padding: 0.5rem;
-  border: 1px solid #ccc;
+  border: 1px solid #333;
   border-radius: 4px;
   font-size: 1rem;
   width: 100%;
+  background: #1a1a24;
+  color: #e0e0e0;
 }
 
 input:focus, select:focus, textarea:focus {
   outline: none;
-  border-color: #0066cc;
+  border-color: #0099ee;
+}
+
+input::placeholder, textarea::placeholder {
+  color: #666;
+}
+
+select option {
+  background: #1a1a24;
+  color: #e0e0e0;
 }
 
 .card {
-  background: white;
+  background: #12121a;
   border-radius: 8px;
   padding: 1rem;
-  box-shadow: 0 2px 4px rgba(0,0,0,0.1);
+  box-shadow: 0 2px 8px rgba(0,0,0,0.4);
+  border: 1px solid #1e1e2a;
   margin-bottom: 1rem;
 }
 
 .error {
-  color: #cc0000;
-  background: #ffe6e6;
+  color: #ff6b6b;
+  background: rgba(255, 100, 100, 0.15);
+  border: 1px solid rgba(255, 100, 100, 0.3);
+  padding: 0.5rem;
+  border-radius: 4px;
+  margin-bottom: 1rem;
+}
+
+.success {
+  color: #4ade80;
+  background: rgba(74, 222, 128, 0.15);
+  border: 1px solid rgba(74, 222, 128, 0.3);
   padding: 0.5rem;
   border-radius: 4px;
   margin-bottom: 1rem;
@@ -68,7 +91,7 @@ input:focus, select:focus, textarea:focus {
 .loading {
   text-align: center;
   padding: 2rem;
-  color: #666;
+  color: #888;
 }
 
 table {
@@ -79,16 +102,25 @@ table {
 th, td {
   padding: 0.75rem;
   text-align: left;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid #1e1e2a;
 }
 
 th {
-  background: #f9f9f9;
+  background: #16161e;
   font-weight: 600;
+  color: #aaa;
 }
 
 tr:hover {
-  background: #f5f5f5;
+  background: #16161e;
+}
+
+a {
+  color: #4dc3ff;
+}
+
+a:hover {
+  color: #7dd3ff;
 }
 
 .badge {
@@ -100,13 +132,16 @@ tr:hover {
   text-transform: uppercase;
 }
 
-.badge-open { background: #e6f7e6; color: #2d6a2d; }
-.badge-closed { background: #f0f0f0; color: #666; }
-.badge-in_progress { background: #fff3cd; color: #856404; }
-.badge-bug { background: #ffe6e6; color: #cc0000; }
-.badge-feature { background: #e6f0ff; color: #0066cc; }
-.badge-task { background: #f0f0f0; color: #333; }
-.badge-epic { background: #f3e6ff; color: #6600cc; }
+/* Status badges - matching icon colors */
+.badge-open { background: rgba(74, 222, 128, 0.2); color: #4ade80; }
+.badge-closed { background: rgba(150, 150, 150, 0.2); color: #999; }
+.badge-in_progress { background: rgba(255, 180, 100, 0.2); color: #ffb464; }
+
+/* Type badges */
+.badge-bug { background: rgba(255, 100, 100, 0.2); color: #ff6b6b; }
+.badge-feature { background: rgba(100, 180, 255, 0.2); color: #64b4ff; }
+.badge-task { background: rgba(150, 150, 150, 0.2); color: #aaa; }
+.badge-epic { background: rgba(180, 100, 255, 0.2); color: #b464ff; }
 
 .flex {
   display: flex;
@@ -122,3 +157,21 @@ tr:hover {
 .mb-1 { margin-bottom: 0.5rem; }
 .mb-2 { margin-bottom: 1rem; }
 .mb-3 { margin-bottom: 1.5rem; }
+
+/* Accent color for primary actions - teal/cyan from icon */
+.btn-primary {
+  background: linear-gradient(135deg, #0077cc, #00aa99);
+}
+
+.btn-primary:hover {
+  background: linear-gradient(135deg, #0099ee, #00ccbb);
+}
+
+/* Danger button */
+.btn-danger {
+  background: #cc3333;
+}
+
+.btn-danger:hover {
+  background: #ee4444;
+}

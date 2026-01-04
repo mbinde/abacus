@@ -4,6 +4,7 @@ interface Repo {
   id: number
   owner: string
   name: string
+  webhook_secret?: string
 }
 
 interface User {
@@ -33,11 +34,30 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
   const [error, setError] = useState<string | null>(null)
   const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+  const [expandedSecrets, setExpandedSecrets] = useState<Set<number>>(new Set())
 
   // Email settings
   const [email, setEmail] = useState('')
   const [emailNotifications, setEmailNotifications] = useState(false)
   const [savingEmail, setSavingEmail] = useState(false)
+
+  function toggleSecret(repoId: number) {
+    setExpandedSecrets(prev => {
+      const next = new Set(prev)
+      if (next.has(repoId)) {
+        next.delete(repoId)
+      } else {
+        next.add(repoId)
+      }
+      return next
+    })
+  }
+
+  function copySecret(secret: string) {
+    navigator.clipboard.writeText(secret)
+    setSuccess('Webhook secret copied to clipboard')
+    setTimeout(() => setSuccess(null), 2000)
+  }
 
   useEffect(() => {
     loadProfile()
@@ -140,9 +160,9 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
       </div>
 
       {error && <div className="error mb-2">{error}</div>}
-      {success && <div className="mb-2" style={{ color: '#28a745', padding: '0.5rem', background: '#d4edda', borderRadius: '4px' }}>{success}</div>}
+      {success && <div className="success mb-2">{success}</div>}
 
-      <div className="mb-3" style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+      <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
           <img
             src={user.avatarUrl}
@@ -153,7 +173,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
             <div style={{ fontSize: '1.25rem', fontWeight: 600 }}>
               {user.name || user.login}
             </div>
-            <div style={{ color: '#666' }}>@{user.login}</div>
+            <div style={{ color: '#888' }}>@{user.login}</div>
             <div style={{ marginTop: '0.25rem' }}>
               <span className={`badge badge-${user.role === 'admin' ? 'feature' : user.role === 'premium' ? 'epic' : 'task'}`}>
                 {user.role}
@@ -163,7 +183,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
         </div>
       </div>
 
-      <div className="mb-3" style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+      <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
         <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Email Notifications</h3>
         <div className="mb-2">
           <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
@@ -186,7 +206,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
             />
             <span style={{ fontSize: '0.875rem' }}>Receive email notifications for issue changes</span>
           </label>
-          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+          <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
             Get notified when issues assigned to you or created by you are updated
           </div>
         </div>
@@ -228,47 +248,68 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
       )}
 
       {repos.length === 0 ? (
-        <p style={{ color: '#666', textAlign: 'center', padding: '1rem' }}>
+        <p style={{ color: '#888', textAlign: 'center', padding: '1rem' }}>
           No repositories added yet. Add a repo to get started.
         </p>
       ) : (
-        <table>
-          <thead>
-            <tr>
-              <th>Repository</th>
-              <th style={{ width: '100px' }}>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            {repos.map(repo => (
-              <tr key={repo.id}>
-                <td>
-                  <a
-                    href={`https://github.com/${repo.owner}/${repo.name}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    style={{ color: '#0066cc', textDecoration: 'none' }}
-                  >
-                    {repo.owner}/{repo.name}
-                  </a>
-                </td>
-                <td>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
+          {repos.map(repo => (
+            <div key={repo.id} style={{ padding: '0.75rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
+              <div className="flex-between" style={{ marginBottom: repo.webhook_secret && expandedSecrets.has(repo.id) ? '0.5rem' : 0 }}>
+                <a
+                  href={`https://github.com/${repo.owner}/${repo.name}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                >
+                  {repo.owner}/{repo.name}
+                </a>
+                <div style={{ display: 'flex', gap: '0.5rem' }}>
+                  {repo.webhook_secret && (
+                    <button
+                      onClick={() => toggleSecret(repo.id)}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                    >
+                      {expandedSecrets.has(repo.id) ? 'Hide Secret' : 'Webhook Secret'}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleRemove(repo)}
                     disabled={loading}
-                    style={{
-                      background: '#dc3545',
-                      fontSize: '0.75rem',
-                      padding: '0.25rem 0.5rem'
-                    }}
+                    className="btn-danger"
+                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                   >
                     Remove
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+                </div>
+              </div>
+              {repo.webhook_secret && expandedSecrets.has(repo.id) && (
+                <div style={{ fontSize: '0.75rem', color: '#888' }}>
+                  <div style={{ marginBottom: '0.25rem' }}>
+                    Use this secret when configuring the GitHub webhook:
+                  </div>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                    <code style={{
+                      background: '#0d0d12',
+                      padding: '0.25rem 0.5rem',
+                      borderRadius: '3px',
+                      fontSize: '0.7rem',
+                      wordBreak: 'break-all',
+                      flex: 1
+                    }}>
+                      {repo.webhook_secret}
+                    </code>
+                    <button
+                      onClick={() => copySecret(repo.webhook_secret!)}
+                      style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem', flexShrink: 0 }}
+                    >
+                      Copy
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
       )}
     </div>
   )

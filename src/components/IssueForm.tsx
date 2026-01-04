@@ -118,7 +118,7 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
         </div>
 
         <div className="flex" style={{ justifyContent: 'flex-end' }}>
-          <button type="button" onClick={onCancel} style={{ background: '#666' }}>
+          <button type="button" onClick={onCancel} style={{ background: '#444' }}>
             Cancel
           </button>
           <button type="submit">

@@ -111,22 +111,26 @@ You'll receive emails when:
 
 To enable notifications for a repository, set up a GitHub webhook:
 
-1. Go to your repository on GitHub
-2. Navigate to **Settings** → **Webhooks** → **Add webhook**
-3. Configure the webhook:
+1. In Abacus, go to your **Profile** and find the repository
+2. Click **Webhook Secret** to reveal the secret for that repo
+3. Copy the secret
+4. Go to your repository on GitHub
+5. Navigate to **Settings** → **Webhooks** → **Add webhook**
+6. Configure the webhook:
    - **Payload URL:** `https://your-abacus-instance.pages.dev/api/webhooks/github`
    - **Content type:** `application/json`
-   - **Secret:** Generate a secure secret and add it to your Abacus deployment as `GITHUB_WEBHOOK_SECRET`
+   - **Secret:** Paste the secret you copied from Abacus
    - **Events:** Select "Just the push event"
-4. Click **Add webhook**
+7. Click **Add webhook**
+
+Each repository has its own unique webhook secret, generated when the repo is added to Abacus.
 
 The webhook will trigger when `.beads/issues.jsonl` changes, and Abacus will notify relevant users.
 
 ### Deployment Configuration
 
-Add these secrets to your Cloudflare Pages deployment:
+Add this secret to your Cloudflare Pages deployment:
 
-- `GITHUB_WEBHOOK_SECRET` - The secret you configured in GitHub
 - `RESEND_API_KEY` - API key from [Resend](https://resend.com) for sending emails
 
 ## Development
