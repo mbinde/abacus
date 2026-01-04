@@ -4,6 +4,7 @@ import RepoSelector from './components/RepoSelector'
 import IssueList from './components/IssueList'
 import IssueForm from './components/IssueForm'
 import AdminPanel from './components/AdminPanel'
+import Profile from './components/Profile'
 
 interface Repo {
   id: number
@@ -33,7 +34,7 @@ interface User {
   role: 'admin' | 'premium' | 'user'
 }
 
-type View = 'list' | 'create' | 'edit' | 'admin'
+type View = 'list' | 'create' | 'edit' | 'admin' | 'profile'
 
 interface AppState {
   view: View
@@ -44,6 +45,9 @@ function parseUrlState(): AppState {
   const path = window.location.pathname
   if (path === '/admin') {
     return { view: 'admin' }
+  }
+  if (path === '/profile') {
+    return { view: 'profile' }
   }
   if (path === '/new') {
     return { view: 'create' }
@@ -59,6 +63,8 @@ function buildUrl(state: AppState): string {
   switch (state.view) {
     case 'admin':
       return '/admin'
+    case 'profile':
+      return '/profile'
     case 'create':
       return '/new'
     case 'edit':
@@ -308,10 +314,43 @@ export default function App() {
         setSelectedRepo(data.repo)
       } else {
         const data = await res.json() as { error?: string }
-        setError(data.error || 'Failed to add repo')
+        throw new Error(data.error || 'Failed to add repo')
       }
-    } catch {
-      setError('Failed to add repo')
+    } catch (err) {
+      const message = (err as Error).message || 'Failed to add repo'
+      setError(message)
+      throw err
+    }
+  }
+
+  async function handleRemoveRepo(repoId: number) {
+    try {
+      const res = await fetch(`/api/repos/${repoId}`, {
+        method: 'DELETE',
+      })
+      if (res.ok) {
+        const newRepos = repos.filter(r => r.id !== repoId)
+        setRepos(newRepos)
+        // If we removed the selected repo, select another one
+        if (selectedRepo?.id === repoId) {
+          setSelectedRepo(newRepos.length > 0 ? newRepos[0] : null)
+          if (newRepos.length > 0) {
+            localStorage.setItem('abacus:selectedRepo', JSON.stringify({
+              owner: newRepos[0].owner,
+              name: newRepos[0].name,
+            }))
+          } else {
+            localStorage.removeItem('abacus:selectedRepo')
+          }
+        }
+      } else {
+        const data = await res.json() as { error?: string }
+        throw new Error(data.error || 'Failed to remove repo')
+      }
+    } catch (err) {
+      const message = (err as Error).message || 'Failed to remove repo'
+      setError(message)
+      throw err
     }
   }
 
@@ -396,6 +435,21 @@ export default function App() {
     )
   }
 
+  // Profile view
+  if (view === 'profile') {
+    return (
+      <div className="container">
+        <Profile
+          user={user}
+          repos={repos}
+          onBack={() => navigate('list')}
+          onAddRepo={handleAddRepo}
+          onRemoveRepo={handleRemoveRepo}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="container">
       <header className="flex-between mb-3">
@@ -406,7 +460,11 @@ export default function App() {
               Admin
             </button>
           )}
-          <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+          <div
+            onClick={() => navigate('profile')}
+            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
+            title="View profile"
+          >
             <img
               src={user.avatarUrl}
               alt={user.login}
