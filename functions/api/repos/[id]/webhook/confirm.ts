@@ -35,7 +35,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
     // Check that GitHub has pinged us with this secret (verification)
     if (!provisional.verified_at) {
-      return new Response(JSON.stringify({ error: 'Webhook not verified. Please ensure the webhook is configured correctly in GitHub and that GitHub has successfully sent a ping.' }), {
+      return new Response(JSON.stringify({ error: 'Webhook not verified yet. GitHub sends a ping when you create the webhook. If it failed, go to your repo Settings → Webhooks, click the webhook, and click "Redeliver" on the ping event to retry.' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })

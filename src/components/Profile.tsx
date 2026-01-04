@@ -300,8 +300,9 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
               2. Set Payload URL to: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>{window.location.origin}/api/webhooks/github</code><br />
               3. Set Content type to: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>application/json</code><br />
               4. Set Secret to the value below<br />
-              5. Select "Just the push event"<br />
-              6. Click "Add webhook", then click Confirm below
+              5. Select "Enable SSL verification"<br />
+              6. Select "Just the push event"<br />
+              7. Click "Add webhook", then click Confirm below
             </div>
             <div style={{ color: '#888', marginBottom: '0.25rem' }}>Your webhook secret:</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>

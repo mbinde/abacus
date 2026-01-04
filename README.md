@@ -120,6 +120,7 @@ To enable notifications for a repository, set up a GitHub webhook:
    - **Payload URL:** `https://your-abacus-instance.pages.dev/api/webhooks/github`
    - **Content type:** `application/json`
    - **Secret:** Paste the secret you copied from Abacus
+   - **SSL verification:** Select "Enable SSL verification"
    - **Events:** Select "Just the push event"
 7. Click **Add webhook**
 
