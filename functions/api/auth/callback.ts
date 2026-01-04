@@ -116,6 +116,17 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const countResult = await env.DB.prepare('SELECT COUNT(*) as count FROM users').first() as { count: number }
     const isFirstUser = countResult.count === 0
 
+    // Check registration mode (first user always allowed)
+    if (!isFirstUser) {
+      const regMode = await env.DB.prepare(
+        "SELECT value FROM settings WHERE key = 'registration_mode'"
+      ).first() as { value: string } | null
+
+      if (regMode?.value === 'closed') {
+        return Response.redirect(`${url.origin}/?error=${encodeURIComponent('Registration is closed. Contact an administrator for access.')}`)
+      }
+    }
+
     // Create new user
     await env.DB.prepare(`
       INSERT INTO users (github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, last_login_at)

@@ -11,18 +11,27 @@ interface User {
   last_login_at: string | null
 }
 
+interface Settings {
+  registration_mode?: 'open' | 'closed'
+}
+
 interface Props {
   onBack: () => void
 }
 
 export default function AdminPanel({ onBack }: Props) {
   const [users, setUsers] = useState<User[]>([])
+  const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
-    loadUsers()
+    loadData()
   }, [])
+
+  async function loadData() {
+    await Promise.all([loadUsers(), loadSettings()])
+  }
 
   async function loadUsers() {
     try {
@@ -38,6 +47,37 @@ export default function AdminPanel({ onBack }: Props) {
       setError('Failed to connect to server')
     } finally {
       setLoading(false)
+    }
+  }
+
+  async function loadSettings() {
+    try {
+      const res = await fetch('/api/admin/settings')
+      if (res.ok) {
+        const data = await res.json() as { settings: Settings }
+        setSettings(data.settings)
+      }
+    } catch {
+      // Settings might not exist yet, that's ok
+    }
+  }
+
+  async function handleRegistrationModeChange(mode: 'open' | 'closed') {
+    setError(null)
+    try {
+      const res = await fetch('/api/admin/settings', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ key: 'registration_mode', value: mode }),
+      })
+      if (res.ok) {
+        setSettings(prev => ({ ...prev, registration_mode: mode }))
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error || 'Failed to update setting')
+      }
+    } catch {
+      setError('Failed to update setting')
     }
   }
 
@@ -87,11 +127,30 @@ export default function AdminPanel({ onBack }: Props) {
   return (
     <div className="card">
       <div className="flex-between mb-3">
-        <h2>User Management</h2>
+        <h2>Admin Panel</h2>
         <button onClick={onBack}>Back</button>
       </div>
 
       {error && <div className="error mb-2">{error}</div>}
+
+      <div className="mb-3" style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Settings</h3>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Registration:</span>
+            <select
+              value={settings.registration_mode || 'open'}
+              onChange={(e) => handleRegistrationModeChange(e.target.value as 'open' | 'closed')}
+              style={{ padding: '0.25rem' }}
+            >
+              <option value="open">Open (anyone can sign up)</option>
+              <option value="closed">Closed (existing users only)</option>
+            </select>
+          </label>
+        </div>
+      </div>
+
+      <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Users</h3>
 
       {loading ? (
         <div className="loading">Loading...</div>
