@@ -161,3 +161,7 @@ npx wrangler pages deploy dist
   - Issues stored in GitHub repos (`.beads/issues.jsonl`)
   - User sessions in Cloudflare KV
   - User metadata in Cloudflare D1
+
+### Running on Other Platforms
+
+Abacus includes an abstraction layer that allows it to run on platforms other than Cloudflare. See [src/server/README.md](src/server/README.md) for instructions on deploying to Node.js, Docker, Fly.io, Railway, Vercel, or other hosting providers.
