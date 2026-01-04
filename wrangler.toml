@@ -1,0 +1,15 @@
+name = "abacus"
+compatibility_date = "2024-12-01"
+pages_build_output_dir = "./dist"
+
+[[d1_databases]]
+binding = "DB"
+database_name = "abacus-db"
+database_id = "0d2be46d-1c4b-4a2a-943a-cbe42288ab94"
+
+[[kv_namespaces]]
+binding = "SESSIONS"
+id = "3c17b527f5994ef3b62522922fa9d8df"
+
+[vars]
+# Set GITHUB_TOKEN and SESSION_SECRET in Cloudflare dashboard secrets for production

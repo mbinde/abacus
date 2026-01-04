@@ -1,0 +1,12 @@
+# Copy this to .dev.vars and fill in your values
+# DO NOT commit .dev.vars to git!
+
+# GitHub OAuth App credentials
+# Create at: https://github.com/settings/developers
+# Callback URL: http://localhost:8788/api/auth/callback
+GITHUB_CLIENT_ID=your-oauth-app-client-id
+GITHUB_CLIENT_SECRET=your-oauth-app-client-secret
+
+# Encryption key for storing GitHub tokens (32-byte hex)
+# Generate with: openssl rand -hex 32
+TOKEN_ENCRYPTION_KEY=your-64-character-hex-string-here
