@@ -93,6 +93,42 @@ Abacus and the `bd` CLI can both write to the same `.beads/issues.jsonl` file. C
 - Merges by issue ID, keeping the version with the latest `updated_at`
 - New issues from both sides are preserved
 
+## Email Notifications
+
+Abacus can send email notifications when issues change. To enable this:
+
+### For Users
+
+1. Go to your Profile in Abacus
+2. Enter your email address
+3. Enable "Receive email notifications for issue changes"
+
+You'll receive emails when:
+- Issues assigned to you are updated
+- Issues you created are updated
+
+### For Repository Owners
+
+To enable notifications for a repository, set up a GitHub webhook:
+
+1. Go to your repository on GitHub
+2. Navigate to **Settings** → **Webhooks** → **Add webhook**
+3. Configure the webhook:
+   - **Payload URL:** `https://your-abacus-instance.pages.dev/api/webhooks/github`
+   - **Content type:** `application/json`
+   - **Secret:** Generate a secure secret and add it to your Abacus deployment as `GITHUB_WEBHOOK_SECRET`
+   - **Events:** Select "Just the push event"
+4. Click **Add webhook**
+
+The webhook will trigger when `.beads/issues.jsonl` changes, and Abacus will notify relevant users.
+
+### Deployment Configuration
+
+Add these secrets to your Cloudflare Pages deployment:
+
+- `GITHUB_WEBHOOK_SECRET` - The secret you configured in GitHub
+- `RESEND_API_KEY` - API key from [Resend](https://resend.com) for sending emails
+
 ## Development
 
 ```bash

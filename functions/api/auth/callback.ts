@@ -21,6 +21,13 @@ interface GitHubUser {
   login: string
   name: string | null
   avatar_url: string
+  email: string | null
+}
+
+interface GitHubEmail {
+  email: string
+  primary: boolean
+  verified: boolean
 }
 
 export const onRequestGet: PagesFunction<Env> = async (context) => {
@@ -81,6 +88,25 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   const githubUser = await userRes.json() as GitHubUser
 
+  // Get user's primary email if not in profile
+  let userEmail = githubUser.email
+  if (!userEmail) {
+    const emailsRes = await fetch('https://api.github.com/user/emails', {
+      headers: {
+        'Authorization': `token ${tokenData.access_token}`,
+        'Accept': 'application/vnd.github.v3+json',
+        'User-Agent': 'abacus',
+      },
+    })
+    if (emailsRes.ok) {
+      const emails = await emailsRes.json() as GitHubEmail[]
+      const primary = emails.find(e => e.primary && e.verified)
+      if (primary) {
+        userEmail = primary.email
+      }
+    }
+  }
+
   // Encrypt the token before storing
   const encryptedToken = await encryptToken(tokenData.access_token, env.TOKEN_ENCRYPTION_KEY)
 
@@ -90,13 +116,14 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   ).bind(githubUser.id).first()
 
   if (user) {
-    // Update existing user
+    // Update existing user (only update email if user hasn't set one manually and we have one from GitHub)
     await env.DB.prepare(`
       UPDATE users SET
         github_login = ?,
         github_name = ?,
         github_avatar_url = ?,
         github_token_encrypted = ?,
+        email = COALESCE(email, ?),
         last_login_at = CURRENT_TIMESTAMP
       WHERE github_id = ?
     `).bind(
@@ -104,6 +131,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       githubUser.name,
       githubUser.avatar_url,
       encryptedToken,
+      userEmail,
       githubUser.id
     ).run()
 
@@ -130,15 +158,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
     // Create new user
     await env.DB.prepare(`
-      INSERT INTO users (github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, last_login_at)
-      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      INSERT INTO users (github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, email, last_login_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
     `).bind(
       githubUser.id,
       githubUser.login,
       githubUser.name,
       githubUser.avatar_url,
       encryptedToken,
-      isFirstUser ? 'admin' : 'user'
+      isFirstUser ? 'admin' : 'user',
+      userEmail
     ).run()
 
     user = await env.DB.prepare(

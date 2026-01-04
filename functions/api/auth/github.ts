@@ -15,7 +15,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const params = new URLSearchParams({
     client_id: env.GITHUB_CLIENT_ID,
     redirect_uri: `${url.origin}/api/auth/callback`,
-    scope: 'repo read:user',
+    scope: 'repo read:user user:email',
     state,
   })
 

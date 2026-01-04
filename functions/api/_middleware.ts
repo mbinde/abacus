@@ -116,6 +116,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const publicPaths = [
     '/api/auth/check',
     '/api/auth/logout',
+    '/api/webhooks/github',
   ]
 
   if (publicPaths.some(p => url.pathname === p)) {

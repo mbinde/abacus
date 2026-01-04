@@ -1,4 +1,4 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 
 interface Repo {
   id: number
@@ -14,6 +14,11 @@ interface User {
   role: 'admin' | 'premium' | 'user'
 }
 
+interface ProfileData {
+  email: string | null
+  email_notifications: boolean
+}
+
 interface Props {
   user: User
   repos: Repo[]
@@ -26,7 +31,59 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
   const [showAddForm, setShowAddForm] = useState(false)
   const [repoUrl, setRepoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
+  const [success, setSuccess] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
+
+  // Email settings
+  const [email, setEmail] = useState('')
+  const [emailNotifications, setEmailNotifications] = useState(false)
+  const [savingEmail, setSavingEmail] = useState(false)
+
+  useEffect(() => {
+    loadProfile()
+  }, [])
+
+  async function loadProfile() {
+    try {
+      const res = await fetch('/api/user/profile')
+      if (res.ok) {
+        const data = await res.json() as { profile: ProfileData }
+        setEmail(data.profile.email || '')
+        setEmailNotifications(data.profile.email_notifications)
+      }
+    } catch {
+      // Profile data optional, continue without it
+    }
+  }
+
+  async function handleSaveEmail() {
+    setError(null)
+    setSuccess(null)
+    setSavingEmail(true)
+
+    try {
+      const res = await fetch('/api/user/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          email: email || null,
+          email_notifications: emailNotifications,
+        }),
+      })
+
+      if (res.ok) {
+        setSuccess('Email settings saved')
+        setTimeout(() => setSuccess(null), 3000)
+      } else {
+        const data = await res.json() as { error?: string }
+        setError(data.error || 'Failed to save email settings')
+      }
+    } catch {
+      setError('Failed to save email settings')
+    } finally {
+      setSavingEmail(false)
+    }
+  }
 
   function parseRepoUrl(url: string): { owner: string; name: string } | null {
     const cleaned = url.replace(/^https?:\/\//, '').replace(/^github\.com\//, '').replace(/\.git$/, '').trim()
@@ -83,6 +140,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
       </div>
 
       {error && <div className="error mb-2">{error}</div>}
+      {success && <div className="mb-2" style={{ color: '#28a745', padding: '0.5rem', background: '#d4edda', borderRadius: '4px' }}>{success}</div>}
 
       <div className="mb-3" style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
@@ -103,6 +161,42 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo }
             </div>
           </div>
         </div>
+      </div>
+
+      <div className="mb-3" style={{ padding: '1rem', background: '#f8f9fa', borderRadius: '4px' }}>
+        <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Email Notifications</h3>
+        <div className="mb-2">
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
+            Email Address
+          </label>
+          <input
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="your@email.com"
+            style={{ width: '100%', maxWidth: '300px' }}
+          />
+        </div>
+        <div className="mb-2">
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+            <input
+              type="checkbox"
+              checked={emailNotifications}
+              onChange={(e) => setEmailNotifications(e.target.checked)}
+            />
+            <span style={{ fontSize: '0.875rem' }}>Receive email notifications for issue changes</span>
+          </label>
+          <div style={{ fontSize: '0.75rem', color: '#666', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+            Get notified when issues assigned to you or created by you are updated
+          </div>
+        </div>
+        <button
+          onClick={handleSaveEmail}
+          disabled={savingEmail}
+          style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
+        >
+          {savingEmail ? 'Saving...' : 'Save Email Settings'}
+        </button>
       </div>
 
       <div className="flex-between mb-2">
