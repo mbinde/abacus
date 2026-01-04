@@ -12,6 +12,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const user = (data as { user: UserContext }).user
   const repoId = Number(params.id)
 
+  // Only premium users can configure webhooks
+  if (user.role !== 'premium' && user.role !== 'admin') {
+    return new Response(JSON.stringify({ error: 'Premium subscription required' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
     // Check user has access to this repo
     const userRepo = await env.DB.prepare(

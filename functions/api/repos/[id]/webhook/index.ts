@@ -78,6 +78,14 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const user = (data as { user: UserContext }).user
   const repoId = Number(params.id)
 
+  // Only premium users can manage webhooks
+  if (user.role !== 'premium' && user.role !== 'admin') {
+    return new Response(JSON.stringify({ error: 'Premium subscription required' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
     const repo = await env.DB.prepare(
       'SELECT webhook_owner_id FROM repos WHERE id = ?'

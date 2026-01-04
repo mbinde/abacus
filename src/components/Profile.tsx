@@ -39,6 +39,7 @@ interface Props {
 }
 
 export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, onReposChange }: Props) {
+  const isPremium = user.role === 'premium' || user.role === 'admin'
   const [showAddForm, setShowAddForm] = useState(false)
   const [repoUrl, setRepoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -354,41 +355,43 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
         </div>
       </div>
 
-      <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
-        <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Email Notifications</h3>
-        <div className="mb-2">
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
-            Email Address
-          </label>
-          <input
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="your@email.com"
-            style={{ width: '100%', maxWidth: '300px' }}
-          />
-        </div>
-        <div className="mb-2">
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+      {isPremium && (
+        <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
+          <h3 style={{ margin: '0 0 0.75rem 0', fontSize: '1rem' }}>Email Notifications</h3>
+          <div className="mb-2">
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontSize: '0.875rem', fontWeight: 500 }}>
+              Email Address
+            </label>
             <input
-              type="checkbox"
-              checked={emailNotifications}
-              onChange={(e) => setEmailNotifications(e.target.checked)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="your@email.com"
+              style={{ width: '100%', maxWidth: '300px' }}
             />
-            <span style={{ fontSize: '0.875rem' }}>Receive email notifications for issue changes</span>
-          </label>
-          <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
-            Get notified when issues assigned to you or created by you are updated
           </div>
+          <div className="mb-2">
+            <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}>
+              <input
+                type="checkbox"
+                checked={emailNotifications}
+                onChange={(e) => setEmailNotifications(e.target.checked)}
+              />
+              <span style={{ fontSize: '0.875rem' }}>Receive email notifications for issue changes</span>
+            </label>
+            <div style={{ fontSize: '0.75rem', color: '#888', marginTop: '0.25rem', marginLeft: '1.5rem' }}>
+              Get notified when issues assigned to you or created by you are updated
+            </div>
+          </div>
+          <button
+            onClick={handleSaveEmail}
+            disabled={savingEmail}
+            style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
+          >
+            {savingEmail ? 'Saving...' : 'Save Email Settings'}
+          </button>
         </div>
-        <button
-          onClick={handleSaveEmail}
-          disabled={savingEmail}
-          style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
-        >
-          {savingEmail ? 'Saving...' : 'Save Email Settings'}
-        </button>
-      </div>
+      )}
 
       <div className="flex-between mb-2">
         <h3 style={{ margin: 0, fontSize: '1rem' }}>Repositories ({repos.length})</h3>
@@ -435,19 +438,21 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                   >
                     {repo.owner}/{repo.name}
                   </a>
-                  {repo.webhook_configured && (
+                  {isPremium && repo.webhook_configured && (
                     <span style={{ fontSize: '0.7rem', color: repo.webhook_is_owner ? '#4ade80' : '#888' }}>
                       {repo.webhook_is_owner ? '✓ notifications enabled (owner)' : '✓ notifications enabled'}
                     </span>
                   )}
                 </div>
                 <div style={{ display: 'flex', gap: '0.5rem' }}>
-                  <button
-                    onClick={() => handleToggleWebhook(repo.id)}
-                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                  >
-                    {expandedWebhook === repo.id ? 'Hide' : 'Notifications'}
-                  </button>
+                  {isPremium && (
+                    <button
+                      onClick={() => handleToggleWebhook(repo.id)}
+                      style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                    >
+                      {expandedWebhook === repo.id ? 'Hide' : 'Notifications'}
+                    </button>
+                  )}
                   <button
                     onClick={() => handleRemove(repo)}
                     disabled={loading}
