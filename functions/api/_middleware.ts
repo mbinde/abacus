@@ -52,14 +52,14 @@ async function checkRateLimit(ip: string, env: Env): Promise<{ allowed: boolean;
 interface SessionData {
   userId: number
   githubId: number
-  role: 'admin' | 'user'
+  role: 'admin' | 'premium' | 'user'
 }
 
 export interface UserContext {
   id: number
   githubId: number
   github_login: string
-  role: 'admin' | 'user'
+  role: 'admin' | 'premium' | 'user'
   githubToken: string
 }
 
@@ -135,7 +135,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   // Get user's encrypted token from DB
   const user = await env.DB.prepare(
     'SELECT id, github_login, github_token_encrypted, role FROM users WHERE id = ?'
-  ).bind(session.userId).first() as { id: number; github_login: string; github_token_encrypted: string; role: 'admin' | 'user' } | null
+  ).bind(session.userId).first() as { id: number; github_login: string; github_token_encrypted: string; role: 'admin' | 'premium' | 'user' } | null
 
   if (!user) {
     return new Response(JSON.stringify({ error: 'User not found' }), {

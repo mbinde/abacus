@@ -49,8 +49,8 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
   try {
     const { role } = await request.json() as { role: string }
 
-    if (!['admin', 'user'].includes(role)) {
-      return new Response(JSON.stringify({ error: 'Invalid role. Must be "admin" or "user"' }), {
+    if (!['admin', 'premium', 'user'].includes(role)) {
+      return new Response(JSON.stringify({ error: 'Invalid role. Must be "admin", "premium", or "user"' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })

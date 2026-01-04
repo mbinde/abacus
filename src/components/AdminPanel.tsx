@@ -6,7 +6,7 @@ interface User {
   github_login: string
   github_name: string | null
   github_avatar_url: string
-  role: 'admin' | 'user'
+  role: 'admin' | 'premium' | 'user'
   created_at: string
   last_login_at: string | null
 }
@@ -41,7 +41,7 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }
 
-  async function handleRoleChange(userId: number, newRole: 'admin' | 'user') {
+  async function handleRoleChange(userId: number, newRole: 'admin' | 'premium' | 'user') {
     setError(null)
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -128,10 +128,11 @@ export default function AdminPanel({ onBack }: Props) {
                 <td>
                   <select
                     value={user.role}
-                    onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'user')}
+                    onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'premium' | 'user')}
                     style={{ padding: '0.25rem' }}
                   >
                     <option value="admin">Admin</option>
+                    <option value="premium">Premium</option>
                     <option value="user">User</option>
                   </select>
                 </td>

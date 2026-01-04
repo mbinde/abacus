@@ -30,7 +30,7 @@ interface User {
   login: string
   name: string | null
   avatarUrl: string
-  role: 'admin' | 'user'
+  role: 'admin' | 'premium' | 'user'
 }
 
 type View = 'list' | 'create' | 'edit' | 'admin'
