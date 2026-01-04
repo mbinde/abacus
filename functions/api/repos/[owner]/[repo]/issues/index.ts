@@ -16,6 +16,10 @@ interface Issue {
   sha?: string
 }
 
+// Retry configuration
+const MAX_RETRIES = 3
+const BASE_DELAY_MS = 100
+
 // GET /api/repos/:owner/:repo/issues - List all issues
 export const onRequestGet: PagesFunction = async (context) => {
   const { params, data } = context
@@ -149,8 +153,8 @@ export const onRequestPost: PagesFunction = async (context) => {
       created_at: new Date().toISOString(),
     }
 
-    // Determine format by checking if issues.jsonl exists
-    const jsonlRes = await fetch(
+    // Check if using JSONL or markdown format
+    const formatCheck = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
       {
         headers: {
@@ -161,23 +165,17 @@ export const onRequestPost: PagesFunction = async (context) => {
       }
     )
 
-    if (jsonlRes.ok) {
-      // JSONL format - append to file
-      const jsonlData = await jsonlRes.json() as { content: string; sha: string }
-      const content = atob(jsonlData.content.replace(/\n/g, ''))
-      const newContent = content.trim() + '\n' + serializeJsonlIssue(issue) + '\n'
-
-      await updateGitHubFile(
-        user.githubToken,
-        owner,
-        repo,
-        '.beads/issues.jsonl',
-        newContent,
-        `Add issue: ${issue.title}`,
-        jsonlData.sha
-      )
+    if (formatCheck.ok) {
+      // JSONL format - use merge-on-conflict
+      const result = await createIssueWithMerge(user.githubToken, owner, repo, issue)
+      if (!result.success) {
+        return new Response(JSON.stringify({ error: result.error }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
     } else {
-      // Markdown format - create new file
+      // Markdown format - create new file (no conflict possible for new files)
       const mdContent = serializeMarkdownIssue(issue)
 
       await updateGitHubFile(
@@ -200,6 +198,101 @@ export const onRequestPost: PagesFunction = async (context) => {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+}
+
+// Create issue with merge-on-conflict and retry
+async function createIssueWithMerge(
+  token: string,
+  owner: string,
+  repo: string,
+  newIssue: Issue
+): Promise<{ success: boolean; error?: string }> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Fetch current state
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
+      {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'abacus',
+        },
+      }
+    )
+
+    if (!res.ok) {
+      return { success: false, error: 'Failed to fetch issues file' }
+    }
+
+    const data = await res.json() as { content: string; sha: string }
+    const content = atob(data.content.replace(/\n/g, ''))
+
+    // Parse existing issues into map
+    const issueMap = new Map<string, Issue>()
+    for (const line of content.trim().split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const obj = JSON.parse(line)
+        issueMap.set(obj.id, normalizeIssue(obj))
+      } catch {}
+    }
+
+    // Add new issue (shouldn't conflict on ID since we generated it)
+    issueMap.set(newIssue.id, newIssue)
+
+    // Serialize back to JSONL
+    const newContent = Array.from(issueMap.values())
+      .map(serializeJsonlIssue)
+      .join('\n') + '\n'
+
+    // Try to write
+    const writeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'abacus',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Add issue: ${newIssue.title}`,
+          content: btoa(newContent),
+          sha: data.sha,
+        }),
+      }
+    )
+
+    if (writeRes.ok) {
+      return { success: true }
+    }
+
+    // Check if it's a conflict (409) or SHA mismatch (422)
+    const status = writeRes.status
+    if (status === 409 || status === 422) {
+      // Conflict - retry with exponential backoff
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+    }
+
+    // Non-conflict error or retries exhausted
+    const errData = await writeRes.json() as { message?: string }
+    return {
+      success: false,
+      error: attempt >= MAX_RETRIES
+        ? `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`
+        : errData.message || 'Failed to save issue',
+    }
+  }
+
+  return {
+    success: false,
+    error: `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`,
   }
 }
 

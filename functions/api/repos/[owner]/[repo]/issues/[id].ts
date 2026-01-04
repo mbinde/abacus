@@ -16,6 +16,10 @@ interface Issue {
   sha?: string
 }
 
+// Retry configuration
+const MAX_RETRIES = 3
+const BASE_DELAY_MS = 100
+
 // PUT /api/repos/:owner/:repo/issues/:id - Update an issue
 export const onRequestPut: PagesFunction = async (context) => {
   const { request, params, data } = context
@@ -26,10 +30,9 @@ export const onRequestPut: PagesFunction = async (context) => {
 
   try {
     const reqData = await request.json() as Partial<Issue>
-    const clientSha = reqData.sha
 
     // Check if using JSONL or markdown format
-    const jsonlRes = await fetch(
+    const formatCheck = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
       {
         headers: {
@@ -40,138 +43,26 @@ export const onRequestPut: PagesFunction = async (context) => {
       }
     )
 
-    if (jsonlRes.ok) {
-      // JSONL format
-      const jsonlData = await jsonlRes.json() as { content: string; sha: string }
-
-      // Conflict detection
-      if (clientSha && clientSha !== jsonlData.sha) {
-        // Get the server version of this issue
-        const content = atob(jsonlData.content.replace(/\n/g, ''))
-        const lines = content.trim().split('\n')
-        let serverVersion: Issue | null = null
-
-        for (const line of lines) {
-          const obj = JSON.parse(line)
-          if (obj.id === issueId) {
-            serverVersion = normalizeIssue(obj)
-            break
-          }
-        }
-
-        return new Response(JSON.stringify({
-          error: 'Conflict detected',
-          conflict: true,
-          serverVersion,
-          serverSha: jsonlData.sha,
-        }), {
-          status: 409,
+    if (formatCheck.ok) {
+      // JSONL format - use merge-on-conflict
+      const result = await updateIssueWithMerge(user.githubToken, owner, repo, issueId, reqData)
+      if (!result.success) {
+        const status = result.notFound ? 404 : 500
+        return new Response(JSON.stringify({ error: result.error }), {
+          status,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      const content = atob(jsonlData.content.replace(/\n/g, ''))
-      const lines = content.trim().split('\n')
-      const newLines: string[] = []
-      let found = false
-
-      for (const line of lines) {
-        const obj = JSON.parse(line)
-        if (obj.id === issueId) {
-          found = true
-          const updated: Issue = {
-            ...normalizeIssue(obj),
-            title: reqData.title ?? obj.title,
-            description: reqData.description ?? obj.description,
-            status: reqData.status ?? obj.status,
-            priority: reqData.priority ?? obj.priority,
-            issue_type: reqData.issue_type ?? obj.issue_type,
-            updated_at: new Date().toISOString(),
-          }
-          if (updated.status === 'closed' && !updated.closed_at) {
-            updated.closed_at = new Date().toISOString()
-          }
-          newLines.push(serializeJsonlIssue(updated))
-        } else {
-          newLines.push(line)
-        }
-      }
-
-      if (!found) {
-        return new Response(JSON.stringify({ error: 'Issue not found' }), {
-          status: 404,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
-      await updateGitHubFile(
-        user.githubToken,
-        owner,
-        repo,
-        '.beads/issues.jsonl',
-        newLines.join('\n') + '\n',
-        `Update issue: ${reqData.title || issueId}`,
-        jsonlData.sha
-      )
     } else {
-      // Markdown format
-      const fileRes = await fetch(
-        `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues/${issueId}.md`,
-        {
-          headers: {
-            'Authorization': `token ${user.githubToken}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'abacus',
-          },
-        }
-      )
-
-      if (!fileRes.ok) {
-        return new Response(JSON.stringify({ error: 'Issue not found' }), {
-          status: 404,
+      // Markdown format - use merge-on-conflict for individual file
+      const result = await updateMarkdownIssueWithMerge(user.githubToken, owner, repo, issueId, reqData)
+      if (!result.success) {
+        const status = result.notFound ? 404 : 500
+        return new Response(JSON.stringify({ error: result.error }), {
+          status,
           headers: { 'Content-Type': 'application/json' },
         })
       }
-
-      const fileData = await fileRes.json() as { content: string; sha: string }
-
-      // Conflict detection
-      if (clientSha && clientSha !== fileData.sha) {
-        const content = atob(fileData.content.replace(/\n/g, ''))
-        const serverVersion = parseMarkdownIssue(content)
-
-        return new Response(JSON.stringify({
-          error: 'Conflict detected',
-          conflict: true,
-          serverVersion,
-          serverSha: fileData.sha,
-        }), {
-          status: 409,
-          headers: { 'Content-Type': 'application/json' },
-        })
-      }
-
-      const content = atob(fileData.content.replace(/\n/g, ''))
-      const existing = parseMarkdownIssue(content)
-
-      const updated: Issue = {
-        ...existing,
-        title: reqData.title ?? existing.title,
-        description: reqData.description ?? existing.description,
-        status: reqData.status ?? existing.status,
-        priority: reqData.priority ?? existing.priority,
-        issue_type: reqData.issue_type ?? existing.issue_type,
-      }
-
-      await updateGitHubFile(
-        user.githubToken,
-        owner,
-        repo,
-        `.beads/issues/${issueId}.md`,
-        serializeMarkdownIssue(updated),
-        `Update issue: ${updated.title}`,
-        fileData.sha
-      )
     }
 
     return new Response(JSON.stringify({ success: true }), {
@@ -184,6 +75,210 @@ export const onRequestPut: PagesFunction = async (context) => {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
+  }
+}
+
+// Update issue in JSONL with merge-on-conflict and retry
+async function updateIssueWithMerge(
+  token: string,
+  owner: string,
+  repo: string,
+  issueId: string,
+  updates: Partial<Issue>
+): Promise<{ success: boolean; error?: string; notFound?: boolean }> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Fetch current state
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
+      {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'abacus',
+        },
+      }
+    )
+
+    if (!res.ok) {
+      return { success: false, error: 'Failed to fetch issues file' }
+    }
+
+    const data = await res.json() as { content: string; sha: string }
+    const content = atob(data.content.replace(/\n/g, ''))
+
+    // Parse existing issues into map
+    const issueMap = new Map<string, Issue>()
+    for (const line of content.trim().split('\n')) {
+      if (!line.trim()) continue
+      try {
+        const obj = JSON.parse(line)
+        issueMap.set(obj.id, normalizeIssue(obj))
+      } catch {}
+    }
+
+    // Find and update the issue
+    const existing = issueMap.get(issueId)
+    if (!existing) {
+      return { success: false, error: 'Issue not found', notFound: true }
+    }
+
+    const updated: Issue = {
+      ...existing,
+      title: updates.title ?? existing.title,
+      description: updates.description ?? existing.description,
+      status: updates.status ?? existing.status,
+      priority: updates.priority ?? existing.priority,
+      issue_type: updates.issue_type ?? existing.issue_type,
+      updated_at: new Date().toISOString(),
+    }
+    if (updated.status === 'closed' && !updated.closed_at) {
+      updated.closed_at = new Date().toISOString()
+    }
+    issueMap.set(issueId, updated)
+
+    // Serialize back to JSONL
+    const newContent = Array.from(issueMap.values())
+      .map(serializeJsonlIssue)
+      .join('\n') + '\n'
+
+    // Try to write
+    const writeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'abacus',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Update issue: ${updated.title}`,
+          content: btoa(newContent),
+          sha: data.sha,
+        }),
+      }
+    )
+
+    if (writeRes.ok) {
+      return { success: true }
+    }
+
+    // Check if it's a conflict (409) or SHA mismatch (422)
+    const status = writeRes.status
+    if (status === 409 || status === 422) {
+      // Conflict - retry with exponential backoff
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+    }
+
+    // Non-conflict error or retries exhausted
+    const errData = await writeRes.json() as { message?: string }
+    return {
+      success: false,
+      error: attempt >= MAX_RETRIES
+        ? `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`
+        : errData.message || 'Failed to save issue',
+    }
+  }
+
+  return {
+    success: false,
+    error: `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`,
+  }
+}
+
+// Update markdown issue with merge-on-conflict and retry
+async function updateMarkdownIssueWithMerge(
+  token: string,
+  owner: string,
+  repo: string,
+  issueId: string,
+  updates: Partial<Issue>
+): Promise<{ success: boolean; error?: string; notFound?: boolean }> {
+  for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
+    // Fetch current state
+    const res = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues/${issueId}.md`,
+      {
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'abacus',
+        },
+      }
+    )
+
+    if (!res.ok) {
+      if (res.status === 404) {
+        return { success: false, error: 'Issue not found', notFound: true }
+      }
+      return { success: false, error: 'Failed to fetch issue file' }
+    }
+
+    const data = await res.json() as { content: string; sha: string }
+    const content = atob(data.content.replace(/\n/g, ''))
+    const existing = parseMarkdownIssue(content)
+
+    const updated: Issue = {
+      ...existing,
+      title: updates.title ?? existing.title,
+      description: updates.description ?? existing.description,
+      status: updates.status ?? existing.status,
+      priority: updates.priority ?? existing.priority,
+      issue_type: updates.issue_type ?? existing.issue_type,
+    }
+
+    // Try to write
+    const writeRes = await fetch(
+      `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues/${issueId}.md`,
+      {
+        method: 'PUT',
+        headers: {
+          'Authorization': `token ${token}`,
+          'Accept': 'application/vnd.github.v3+json',
+          'User-Agent': 'abacus',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: `Update issue: ${updated.title}`,
+          content: btoa(serializeMarkdownIssue(updated)),
+          sha: data.sha,
+        }),
+      }
+    )
+
+    if (writeRes.ok) {
+      return { success: true }
+    }
+
+    // Check if it's a conflict (409) or SHA mismatch (422)
+    const status = writeRes.status
+    if (status === 409 || status === 422) {
+      // Conflict - retry with exponential backoff
+      if (attempt < MAX_RETRIES) {
+        const delay = BASE_DELAY_MS * Math.pow(2, attempt)
+        await new Promise(resolve => setTimeout(resolve, delay))
+        continue
+      }
+    }
+
+    // Non-conflict error or retries exhausted
+    const errData = await writeRes.json() as { message?: string }
+    return {
+      success: false,
+      error: attempt >= MAX_RETRIES
+        ? `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`
+        : errData.message || 'Failed to save issue',
+    }
+  }
+
+  return {
+    success: false,
+    error: `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`,
   }
 }
 
