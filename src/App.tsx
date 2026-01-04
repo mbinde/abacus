@@ -455,8 +455,8 @@ export default function App() {
   return (
     <div className="container">
       <header className="flex-between mb-3">
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-          <img src="/favicon-96x96.png" alt="" style={{ width: 32, height: 32 }} />
+        <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <img src="/favicon-96x96.png" alt="" style={{ width: 48, height: 48 }} />
           Abacus
         </h1>
         <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>

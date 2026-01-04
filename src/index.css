@@ -47,6 +47,10 @@ input, select, textarea {
   color: #e0e0e0;
 }
 
+input[type="checkbox"] {
+  width: auto;
+}
+
 input:focus, select:focus, textarea:focus {
   outline: none;
   border-color: #0099ee;

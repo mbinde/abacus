@@ -253,7 +253,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
       <div style={{ marginTop: '0.5rem', padding: '0.5rem', background: '#0d0d12', borderRadius: '4px', fontSize: '0.75rem' }}>
         {configured && isOwner && secret && (
           <div>
-            <div style={{ color: '#4ade80', marginBottom: '0.5rem' }}>✓ Webhook configured (you own it)</div>
+            <div style={{ color: '#4ade80', marginBottom: '0.5rem' }}>✓ Email notifications enabled (you own this configuration)</div>
             <div style={{ color: '#888', marginBottom: '0.25rem' }}>Secret:</div>
             <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
               <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all' }}>
@@ -275,18 +275,18 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
 
         {configured && !isOwner && (
           <div style={{ color: '#888' }}>
-            ✓ Webhook configured by another user. You'll receive notifications but can't manage the webhook.
+            ✓ Email notifications enabled by another user. You'll receive notifications but can't manage the configuration.
           </div>
         )}
 
         {!configured && canConfigure && !provisionalSecret && (
           <div>
-            <div style={{ color: '#888', marginBottom: '0.5rem' }}>No webhook configured. Set one up to receive email notifications.</div>
+            <div style={{ color: '#888', marginBottom: '0.5rem' }}>Email notifications not enabled. Set up a GitHub webhook to receive notifications when issues change.</div>
             <button
               onClick={() => handleConfigureWebhook(repo.id)}
               style={{ fontSize: '0.75rem', padding: '0.375rem 0.75rem' }}
             >
-              Configure Webhook
+              Enable Email Notifications
             </button>
           </div>
         )}
@@ -437,7 +437,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                   </a>
                   {repo.webhook_configured && (
                     <span style={{ fontSize: '0.7rem', color: repo.webhook_is_owner ? '#4ade80' : '#888' }}>
-                      {repo.webhook_is_owner ? '✓ webhook (owner)' : '✓ webhook'}
+                      {repo.webhook_is_owner ? '✓ notifications enabled (owner)' : '✓ notifications enabled'}
                     </span>
                   )}
                 </div>
@@ -446,7 +446,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                     onClick={() => handleToggleWebhook(repo.id)}
                     style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
                   >
-                    {expandedWebhook === repo.id ? 'Hide' : 'Webhook'}
+                    {expandedWebhook === repo.id ? 'Hide' : 'Notifications'}
                   </button>
                   <button
                     onClick={() => handleRemove(repo)}
