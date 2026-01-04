@@ -142,15 +142,27 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     role: user!.role,
   })
 
+  const sessionTtl = 60 * 60 * 24 * 7 // 7 days
+
   await env.SESSIONS.put(`session:${sessionToken}`, sessionData, {
-    expirationTtl: 60 * 60 * 24 * 7 // 7 days
+    expirationTtl: sessionTtl
+  })
+
+  // Store reverse mapping for session invalidation on user deletion
+  // Get existing sessions for this user and add the new one
+  const userSessionsKey = `user_sessions:${user!.id}`
+  const existingSessions = await env.SESSIONS.get(userSessionsKey)
+  const sessionsList = existingSessions ? JSON.parse(existingSessions) as string[] : []
+  sessionsList.push(sessionToken)
+  await env.SESSIONS.put(userSessionsKey, JSON.stringify(sessionsList), {
+    expirationTtl: sessionTtl
   })
 
   // Clear oauth_state and set session cookie
   const headers = new Headers()
   headers.append('Location', url.origin)
-  headers.append('Set-Cookie', 'oauth_state=; Path=/; HttpOnly; Max-Age=0')
-  headers.append('Set-Cookie', `session=${sessionToken}; Path=/; HttpOnly; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`)
+  headers.append('Set-Cookie', 'oauth_state=; Path=/; HttpOnly; Secure; Max-Age=0')
+  headers.append('Set-Cookie', `session=${sessionToken}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=${60 * 60 * 24 * 7}`)
 
   return new Response(null, {
     status: 302,

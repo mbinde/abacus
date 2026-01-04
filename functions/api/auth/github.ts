@@ -26,7 +26,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     status: 302,
     headers: {
       'Location': githubUrl,
-      'Set-Cookie': `oauth_state=${state}; Path=/; HttpOnly; SameSite=Lax; Max-Age=600`,
+      'Set-Cookie': `oauth_state=${state}; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=600`,
     },
   })
 }

@@ -4,6 +4,24 @@ import type { UserContext } from '../../_middleware'
 
 interface Env {
   DB: D1Database
+  SESSIONS: KVNamespace
+}
+
+// Audit log helper - logs admin actions to console in structured format
+function auditLog(action: string, adminUser: UserContext, targetUserId: number, details: Record<string, unknown> = {}) {
+  console.log(JSON.stringify({
+    type: 'AUDIT',
+    timestamp: new Date().toISOString(),
+    action,
+    admin: {
+      id: adminUser.id,
+      login: adminUser.github_login,
+    },
+    target: {
+      userId: targetUserId,
+    },
+    ...details,
+  }))
 }
 
 // PUT /api/admin/users/:id - Update user role
@@ -38,9 +56,9 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       })
     }
 
-    // Check if target user exists
-    const targetUser = await env.DB.prepare('SELECT id FROM users WHERE id = ?')
-      .bind(targetUserId).first()
+    // Check if target user exists and get current role
+    const targetUser = await env.DB.prepare('SELECT id, role, github_login FROM users WHERE id = ?')
+      .bind(targetUserId).first<{ id: number; role: string; github_login: string }>()
 
     if (!targetUser) {
       return new Response(JSON.stringify({ error: 'User not found' }), {
@@ -49,8 +67,15 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       })
     }
 
+    const oldRole = targetUser.role
     await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?')
       .bind(role, targetUserId).run()
+
+    auditLog('ROLE_CHANGE', currentUser, targetUserId, {
+      targetLogin: targetUser.github_login,
+      oldRole,
+      newRole: role,
+    })
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
@@ -90,7 +115,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   try {
     // Check if target user exists
     const targetUser = await env.DB.prepare('SELECT id, github_login FROM users WHERE id = ?')
-      .bind(targetUserId).first()
+      .bind(targetUserId).first<{ id: number; github_login: string }>()
 
     if (!targetUser) {
       return new Response(JSON.stringify({ error: 'User not found' }), {
@@ -99,11 +124,24 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
       })
     }
 
+    // Invalidate all sessions for the deleted user
+    const userSessionsKey = `user_sessions:${targetUserId}`
+    const sessionsData = await env.SESSIONS.get(userSessionsKey)
+    if (sessionsData) {
+      const sessionTokens = JSON.parse(sessionsData) as string[]
+      await Promise.all(sessionTokens.map(token => env.SESSIONS.delete(`session:${token}`)))
+      await env.SESSIONS.delete(userSessionsKey)
+    }
+
     // Delete user (CASCADE will delete their repos)
     await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(targetUserId).run()
 
     // Also delete their repos explicitly in case CASCADE isn't working
     await env.DB.prepare('DELETE FROM repos WHERE user_id = ?').bind(targetUserId).run()
+
+    auditLog('USER_DELETE', currentUser, targetUserId, {
+      targetLogin: targetUser.github_login,
+    })
 
     return new Response(JSON.stringify({ success: true }), {
       status: 200,
