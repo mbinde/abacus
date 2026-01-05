@@ -1,5 +1,6 @@
 import { useState, useEffect, useCallback, useRef } from 'react'
 import Login from './components/Login'
+import Header from './components/Header'
 import RepoSelector from './components/RepoSelector'
 import IssueList from './components/IssueList'
 import IssueForm from './components/IssueForm'
@@ -485,6 +486,7 @@ export default function App() {
   if (view === 'admin') {
     return (
       <div className="container">
+        <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
         <AdminPanel onBack={() => navigate('list')} />
       </div>
     )
@@ -494,6 +496,7 @@ export default function App() {
   if (view === 'profile') {
     return (
       <div className="container">
+        <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
         <Profile
           user={user}
           repos={repos}
@@ -509,6 +512,7 @@ export default function App() {
   if (view === 'executors' && selectedRepo) {
     return (
       <div className="container">
+        <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
         <ExecutorSettings
           repoOwner={selectedRepo.owner}
           repoName={selectedRepo.name}
@@ -520,34 +524,7 @@ export default function App() {
 
   return (
     <div className="container">
-      <header className="flex-between mb-3">
-        <h1 style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
-          <img src="/favicon-96x96.png" alt="" style={{ width: 48, height: 48 }} />
-          Abacus
-        </h1>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
-          {user.role === 'admin' && (
-            <button onClick={() => navigate('admin')}>
-              Admin
-            </button>
-          )}
-          <div
-            onClick={() => navigate('profile')}
-            style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', cursor: 'pointer' }}
-            title="View profile"
-          >
-            <img
-              src={user.avatarUrl}
-              alt={user.login}
-              style={{ width: 28, height: 28, borderRadius: '50%' }}
-            />
-            <span style={{ fontSize: '0.875rem' }}>{user.name || user.login}</span>
-          </div>
-          <button onClick={handleLogout}>
-            Logout
-          </button>
-        </div>
-      </header>
+      <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
 
       <RepoSelector
         repos={repos}
