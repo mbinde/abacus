@@ -47,7 +47,7 @@ export const onRequestPost: PagesFunction = async (context) => {
 
     const result = await addCommentWithMerge(
       user.githubToken,
-      user.login,
+      user.github_login,
       owner,
       repo,
       issueId,

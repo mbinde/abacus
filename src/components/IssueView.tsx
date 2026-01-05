@@ -82,10 +82,14 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
         onCommentAdded?.()
       } else {
         const data = await res.json() as { error?: string }
-        setCommentError(data.error || 'Failed to add comment')
+        const errorMsg = data.error || 'Failed to add comment'
+        setCommentError(errorMsg)
+        alert(`Error saving comment: ${errorMsg}`)
       }
-    } catch {
-      setCommentError('Failed to add comment')
+    } catch (err) {
+      const errorMsg = err instanceof Error ? err.message : 'Failed to add comment'
+      setCommentError(errorMsg)
+      alert(`Error saving comment: ${errorMsg}`)
     } finally {
       setCommentLoading(false)
     }
