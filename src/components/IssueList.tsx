@@ -1,4 +1,6 @@
 import { useState, useEffect, useRef, useCallback } from 'react'
+import EmptyState from './EmptyState'
+import KanbanBoard from './KanbanBoard'
 
 interface Issue {
   id: string
@@ -25,13 +27,14 @@ interface Props {
   onDelete: (id: string) => void
   onToggleStar: (issueId: string, starred: boolean) => void
   onBulkUpdate?: (issueIds: string[], updates: BulkUpdate) => Promise<void>
+  onCreateNew?: () => void
 }
 
-type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tree'
+type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tree' | 'kanban'
 type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
 type SortDir = 'asc' | 'desc'
 
-export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate }: Props) {
+export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew }: Props) {
   const [filter, setFilter] = useState<StatusFilter>(() => {
     const saved = localStorage.getItem('abacus:statusFilter')
     return (saved as StatusFilter) || 'open'
@@ -61,11 +64,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   }
 
   if (issues.length === 0) {
-    return (
-      <div className="card" style={{ textAlign: 'center', color: '#888' }}>
-        No issues found. Create one to get started!
-      </div>
-    )
+    return <EmptyState type="issues" onAction={onCreateNew} />
   }
 
   // Count issues by status
@@ -76,11 +75,12 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     closed: issues.filter(i => i.status === 'closed').length,
     starred: issues.filter(i => starredIds.has(i.id)).length,
     tree: issues.filter(i => i.issue_type === 'epic' || i.parent).length,
+    kanban: issues.length,
   }
 
   // Filter issues by status
   let filtered: Issue[]
-  if (filter === 'all') {
+  if (filter === 'all' || filter === 'kanban') {
     filtered = issues
   } else if (filter === 'starred') {
     filtered = issues.filter(i => starredIds.has(i.id))
@@ -264,14 +264,22 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     }
   }
 
-  const filterButtons: { key: StatusFilter; label: string }[] = [
+  const filterButtons: { key: StatusFilter; label: string; hideCount?: boolean }[] = [
     { key: 'all', label: 'All' },
     { key: 'starred', label: '★ Starred' },
     { key: 'open', label: 'Open' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'closed', label: 'Closed' },
     { key: 'tree', label: '🌳 Tree' },
+    { key: 'kanban', label: '📋 Board', hideCount: true },
   ]
+
+  // Handle status change for kanban board
+  const handleStatusChange = (issueId: string, newStatus: 'open' | 'in_progress' | 'closed') => {
+    if (onBulkUpdate) {
+      onBulkUpdate([issueId], { status: newStatus })
+    }
+  }
 
   const SortHeader = ({ column, label }: { column: SortKey; label: string }) => (
     <th
@@ -286,7 +294,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     <div className="card" style={{ overflowX: 'auto' }}>
       {showHelp && <HelpModal onClose={() => setShowHelp(false)} />}
       <div style={{ marginBottom: '1rem', display: 'flex', gap: '0.5rem', flexWrap: 'wrap', alignItems: 'center' }}>
-        {filterButtons.map(({ key, label }) => (
+        {filterButtons.map(({ key, label, hideCount }) => (
           <button
             key={key}
             onClick={() => handleFilterChange(key)}
@@ -297,7 +305,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
               color: filter === key ? 'white' : '#aaa',
             }}
           >
-            {label} ({counts[key]})
+            {label}{hideCount ? '' : ` (${counts[key]})`}
           </button>
         ))}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
@@ -331,7 +339,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           </button>
         </div>
       </div>
-      {checkedIds.size > 0 && onBulkUpdate && (
+      {checkedIds.size > 0 && onBulkUpdate && filter !== 'kanban' && (
         <BulkActionsBar
           count={checkedIds.size}
           loading={bulkLoading}
@@ -341,6 +349,15 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           onClear={() => setCheckedIds(new Set())}
         />
       )}
+      {filter === 'kanban' ? (
+        <KanbanBoard
+          issues={filtered}
+          onEdit={onEdit}
+          onStatusChange={handleStatusChange}
+        />
+      ) : sorted.length === 0 ? (
+        <EmptyState type={filter === 'starred' ? 'starred' : 'search'} />
+      ) : (
       <table>
         <thead>
           <tr>
@@ -441,6 +458,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           ))}
         </tbody>
       </table>
+      )}
     </div>
   )
 }

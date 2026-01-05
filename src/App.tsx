@@ -5,6 +5,10 @@ import IssueList from './components/IssueList'
 import IssueForm from './components/IssueForm'
 import AdminPanel from './components/AdminPanel'
 import Profile from './components/Profile'
+import ExecutorSettings from './components/ExecutorSettings'
+import LoadingSkeleton from './components/LoadingSkeleton'
+import ActivityFeed from './components/ActivityFeed'
+import Dashboard from './components/Dashboard'
 
 interface Repo {
   id: number
@@ -45,7 +49,7 @@ interface User {
   role: 'admin' | 'premium' | 'user'
 }
 
-type View = 'list' | 'create' | 'edit' | 'admin' | 'profile'
+type View = 'list' | 'create' | 'edit' | 'admin' | 'profile' | 'executors' | 'activity' | 'dashboard'
 
 interface AppState {
   view: View
@@ -59,6 +63,15 @@ function parseUrlState(): AppState {
   }
   if (path === '/profile') {
     return { view: 'profile' }
+  }
+  if (path === '/executors') {
+    return { view: 'executors' }
+  }
+  if (path === '/activity') {
+    return { view: 'activity' }
+  }
+  if (path === '/dashboard') {
+    return { view: 'dashboard' }
   }
   if (path === '/new') {
     return { view: 'create' }
@@ -76,6 +89,12 @@ function buildUrl(state: AppState): string {
       return '/admin'
     case 'profile':
       return '/profile'
+    case 'executors':
+      return '/executors'
+    case 'activity':
+      return '/activity'
+    case 'dashboard':
+      return '/dashboard'
     case 'create':
       return '/new'
     case 'edit':
@@ -486,6 +505,19 @@ export default function App() {
     )
   }
 
+  // Executors view
+  if (view === 'executors' && selectedRepo) {
+    return (
+      <div className="container">
+        <ExecutorSettings
+          repoOwner={selectedRepo.owner}
+          repoName={selectedRepo.name}
+          onBack={() => navigate('list')}
+        />
+      </div>
+    )
+  }
+
   return (
     <div className="container">
       <header className="flex-between mb-3">
@@ -530,19 +562,42 @@ export default function App() {
         <>
           <div className="flex-between mb-2">
             <h2>{selectedRepo.owner}/{selectedRepo.name}</h2>
-            {view === 'list' && (
-              <button onClick={() => navigate('create')}>
-                New Issue
-              </button>
+            {(view === 'list' || view === 'activity' || view === 'dashboard') && (
+              <div className="flex">
+                <button
+                  onClick={() => navigate('dashboard')}
+                  style={{ background: view === 'dashboard' ? '#0077cc' : '#444' }}
+                >
+                  Dashboard
+                </button>
+                <button
+                  onClick={() => navigate('activity')}
+                  style={{ background: view === 'activity' ? '#0077cc' : '#444' }}
+                >
+                  Activity
+                </button>
+                <button
+                  onClick={() => navigate('list')}
+                  style={{ background: view === 'list' ? '#0077cc' : '#444' }}
+                >
+                  List
+                </button>
+                <button onClick={() => navigate('executors')} style={{ background: '#444' }}>
+                  Executors
+                </button>
+                <button onClick={() => navigate('create')}>
+                  New Issue
+                </button>
+              </div>
             )}
-            {view !== 'list' && (
+            {view !== 'list' && view !== 'activity' && view !== 'dashboard' && (
               <button onClick={() => navigate('list')}>
                 Back to List
               </button>
             )}
           </div>
 
-          {dataLoading && <div className="loading">Loading...</div>}
+          {dataLoading && <LoadingSkeleton />}
 
           {!dataLoading && view === 'list' && (
             <IssueList
@@ -552,7 +607,19 @@ export default function App() {
               onDelete={handleDeleteIssue}
               onToggleStar={handleToggleStar}
               onBulkUpdate={handleBulkUpdate}
+              onCreateNew={() => navigate('create')}
             />
+          )}
+
+          {!dataLoading && view === 'activity' && (
+            <ActivityFeed
+              issues={issues}
+              onIssueClick={(issue) => navigate('edit', issue)}
+            />
+          )}
+
+          {!dataLoading && view === 'dashboard' && (
+            <Dashboard issues={issues} />
           )}
 
           {!dataLoading && (view === 'create' || view === 'edit') && (

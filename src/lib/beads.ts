@@ -1,5 +1,13 @@
 // Beads format parsing and serialization
 
+export interface GitHubLink {
+  type: 'pr' | 'commit' | 'issue'
+  url: string
+  number?: number
+  sha?: string
+  title?: string
+}
+
 export interface Issue {
   id: string
   title: string
@@ -11,6 +19,7 @@ export interface Issue {
   updated_at?: string
   closed_at?: string
   parent?: string
+  links?: GitHubLink[]
 }
 
 // Parse JSONL format (one JSON object per line)
@@ -66,6 +75,7 @@ function normalizeIssue(obj: Record<string, unknown>): Issue {
     updated_at: obj.updated_at ? String(obj.updated_at) : undefined,
     closed_at: obj.closed_at ? String(obj.closed_at) : undefined,
     parent: obj.parent ? String(obj.parent) : undefined,
+    links: Array.isArray(obj.links) ? obj.links as GitHubLink[] : undefined,
   }
 }
 

@@ -1,4 +1,8 @@
 import { useState, FormEvent } from 'react'
+import DispatchButton from './DispatchButton'
+import MentionText from './MentionText'
+import GitHubLinks from './GitHubLinks'
+import type { GitHubLink } from '../lib/beads'
 
 interface Comment {
   id: number
@@ -21,6 +25,7 @@ interface Issue {
   parent?: string
   sha?: string
   comments?: Comment[]
+  links?: GitHubLink[]
 }
 
 interface Props {
@@ -39,6 +44,7 @@ export default function IssueForm({ issue, onSave, onCancel, repoOwner, repoName
   const [issueType, setIssueType] = useState<Issue['issue_type']>(issue?.issue_type || 'task')
   const [status, setStatus] = useState<Issue['status']>(issue?.status || 'open')
   const [priority, setPriority] = useState(issue?.priority || 3)
+  const [links, setLinks] = useState<GitHubLink[]>(issue?.links || [])
   const [newComment, setNewComment] = useState('')
   const [commentLoading, setCommentLoading] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
@@ -52,6 +58,7 @@ export default function IssueForm({ issue, onSave, onCancel, repoOwner, repoName
       issue_type: issueType,
       status,
       priority,
+      links: links.length > 0 ? links : undefined,
     }
 
     if (issue) {
@@ -162,6 +169,17 @@ export default function IssueForm({ issue, onSave, onCancel, repoOwner, repoName
           </div>
         </div>
 
+        <div className="mb-2">
+          <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+            Linked PRs & Commits
+          </label>
+          <GitHubLinks
+            links={links}
+            onAdd={(link) => setLinks([...links, link])}
+            onRemove={(index) => setLinks(links.filter((_, i) => i !== index))}
+          />
+        </div>
+
         <div className="flex" style={{ justifyContent: 'flex-end' }}>
           <button type="button" onClick={onCancel} style={{ background: '#444' }}>
             Cancel
@@ -171,6 +189,14 @@ export default function IssueForm({ issue, onSave, onCancel, repoOwner, repoName
           </button>
         </div>
       </form>
+
+      {!isNew && repoOwner && repoName && issue && (
+        <DispatchButton
+          repoOwner={repoOwner}
+          repoName={repoName}
+          issueId={issue.id}
+        />
+      )}
 
       {!isNew && (
         <div style={{ marginTop: '2rem', borderTop: '1px solid #333', paddingTop: '1.5rem' }}>
@@ -195,7 +221,9 @@ export default function IssueForm({ issue, onSave, onCancel, repoOwner, repoName
                       {new Date(comment.created_at).toLocaleString()}
                     </span>
                   </div>
-                  <div style={{ whiteSpace: 'pre-wrap' }}>{comment.text}</div>
+                  <div style={{ whiteSpace: 'pre-wrap' }}>
+                    <MentionText text={comment.text} />
+                  </div>
                 </div>
               ))}
             </div>
