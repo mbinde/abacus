@@ -4,6 +4,7 @@ import Header from './components/Header'
 import RepoSelector from './components/RepoSelector'
 import IssueList from './components/IssueList'
 import IssueForm from './components/IssueForm'
+import IssueView from './components/IssueView'
 import AdminPanel from './components/AdminPanel'
 import Profile from './components/Profile'
 import ExecutorSettings from './components/ExecutorSettings'
@@ -50,7 +51,7 @@ interface User {
   role: 'admin' | 'premium' | 'user'
 }
 
-type View = 'list' | 'create' | 'edit' | 'admin' | 'profile' | 'executors' | 'activity' | 'dashboard'
+type View = 'list' | 'create' | 'edit' | 'issue' | 'admin' | 'profile' | 'executors' | 'activity' | 'dashboard'
 
 interface AppState {
   view: View
@@ -141,7 +142,7 @@ export default function App() {
       const state = parseUrlState()
       setView(state.view)
 
-      if (state.view === 'edit' && state.issueId) {
+      if ((state.view === 'edit' || state.view === 'issue') && state.issueId) {
         // Find issue in loaded issues, or store for later lookup
         const issue = issues.find(i => i.id === state.issueId)
         if (issue) {
@@ -580,7 +581,7 @@ export default function App() {
             <IssueList
               issues={issues}
               starredIds={starredIds}
-              onEdit={(issue) => navigate('edit', issue)}
+              onEdit={(issue) => navigate('issue', issue)}
               onDelete={handleDeleteIssue}
               onToggleStar={handleToggleStar}
               onBulkUpdate={handleBulkUpdate}
@@ -591,7 +592,7 @@ export default function App() {
           {!dataLoading && view === 'activity' && (
             <ActivityFeed
               issues={issues}
-              onIssueClick={(issue) => navigate('edit', issue)}
+              onIssueClick={(issue) => navigate('issue', issue)}
             />
           )}
 
@@ -599,15 +600,22 @@ export default function App() {
             <Dashboard issues={issues} />
           )}
 
+          {!dataLoading && view === 'issue' && selectedIssue && (
+            <IssueView
+              issue={selectedIssue}
+              onEdit={() => navigate('edit', selectedIssue)}
+              onClose={() => navigate('list')}
+              repoOwner={selectedRepo.owner}
+              repoName={selectedRepo.name}
+              onCommentAdded={loadIssues}
+            />
+          )}
+
           {!dataLoading && (view === 'create' || view === 'edit') && (
             <IssueForm
               issue={selectedIssue}
               onSave={handleSaveIssue}
-              onCancel={() => navigate('list')}
-              repoOwner={selectedRepo.owner}
-              repoName={selectedRepo.name}
-              userLogin={user.login}
-              onCommentAdded={loadIssues}
+              onCancel={() => view === 'edit' && selectedIssue ? navigate('issue', selectedIssue) : navigate('list')}
             />
           )}
         </>
