@@ -2,6 +2,16 @@
 
 import type { UserContext } from '../../../../_middleware'
 
+// UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
+function utf8ToBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
 interface Comment {
   id: number
   issue_id: string
@@ -269,7 +279,7 @@ async function createIssueWithMerge(
         },
         body: JSON.stringify({
           message: `Add issue: ${newIssue.title}`,
-          content: btoa(newContent),
+          content: utf8ToBase64(newContent),
           sha: data.sha,
         }),
       }
@@ -412,7 +422,7 @@ async function updateGitHubFile(
 ): Promise<void> {
   const body: Record<string, string> = {
     message,
-    content: btoa(content),
+    content: utf8ToBase64(content),
   }
   if (sha) body.sha = sha
 

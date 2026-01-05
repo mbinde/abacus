@@ -2,6 +2,16 @@
 
 import type { UserContext } from '../../../../_middleware'
 
+// UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
+function utf8ToBase64(str: string): string {
+  const bytes = new TextEncoder().encode(str)
+  let binary = ''
+  for (let i = 0; i < bytes.length; i++) {
+    binary += String.fromCharCode(bytes[i])
+  }
+  return btoa(binary)
+}
+
 interface Executor {
   name: string
   type: 'label-poll' | 'webhook'
@@ -194,7 +204,7 @@ async function upsertExecutorWithMerge(
     // Try to write
     const body: Record<string, string> = {
       message: sha ? `Update executor: ${name}` : `Add executor: ${name}`,
-      content: btoa(newContent),
+      content: utf8ToBase64(newContent),
     }
     if (sha) body.sha = sha
 
@@ -271,7 +281,7 @@ async function deleteExecutorWithMerge(
         },
         body: JSON.stringify({
           message: `Delete executor: ${name}`,
-          content: btoa(newContent),
+          content: utf8ToBase64(newContent),
           sha,
         }),
       }
