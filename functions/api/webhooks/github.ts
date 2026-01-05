@@ -1,6 +1,7 @@
 // /api/webhooks/github - Handle GitHub webhook events for issue change notifications
 
 import { decryptToken } from '../../lib/crypto'
+import { queueNotification } from '../notifications/queue'
 
 interface Env {
   DB: D1Database
@@ -101,114 +102,6 @@ function detectChanges(
   }
 
   return changes
-}
-
-// Send email via Resend
-async function sendEmail(
-  to: string,
-  subject: string,
-  html: string,
-  apiKey: string
-): Promise<boolean> {
-  try {
-    const res = await fetch('https://api.resend.com/emails', {
-      method: 'POST',
-      headers: {
-        'Authorization': `Bearer ${apiKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        from: 'Abacus <notifications@abacus.motleywoods.dev>',
-        to: [to],
-        subject,
-        html,
-      }),
-    })
-    if (!res.ok) {
-      const errorText = await res.text()
-      console.error('[webhook] Resend API error:', res.status, errorText)
-    }
-    return res.ok
-  } catch (err) {
-    console.error('[webhook] sendEmail exception:', err)
-    return false
-  }
-}
-
-// Format email for issue change
-function formatEmail(
-  repoFullName: string,
-  issue: BeadsIssue,
-  changeType: 'created' | 'updated' | 'closed',
-  oldIssue?: BeadsIssue
-): { subject: string; html: string } {
-  const statusEmoji = {
-    open: '🟢',
-    in_progress: '🔵',
-    closed: '⚫',
-  }
-
-  let subject: string
-  let changeDescription: string
-
-  switch (changeType) {
-    case 'created':
-      subject = `[${repoFullName}] New issue: ${issue.title}`
-      changeDescription = `A new issue was created.`
-      break
-    case 'closed':
-      subject = `[${repoFullName}] Issue closed: ${issue.title}`
-      changeDescription = `Issue was closed.`
-      break
-    case 'updated':
-      subject = `[${repoFullName}] Issue updated: ${issue.title}`
-      const changes: string[] = []
-      if (oldIssue) {
-        if (oldIssue.status !== issue.status) {
-          changes.push(`Status: ${oldIssue.status} → ${issue.status}`)
-        }
-        if (oldIssue.assignee !== issue.assignee) {
-          changes.push(`Assignee: ${oldIssue.assignee || 'unassigned'} → ${issue.assignee || 'unassigned'}`)
-        }
-        if (oldIssue.title !== issue.title) {
-          changes.push(`Title changed`)
-        }
-      }
-      changeDescription = changes.length > 0 ? changes.join('<br>') : 'Issue details were updated.'
-      break
-  }
-
-  const html = `
-    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
-      <h2 style="color: #333;">${statusEmoji[issue.status]} ${issue.title}</h2>
-      <p style="color: #666;">${changeDescription}</p>
-      <table style="border-collapse: collapse; width: 100%; margin: 16px 0;">
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; background: #f8f9fa;"><strong>Repository</strong></td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${repoFullName}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; background: #f8f9fa;"><strong>Issue ID</strong></td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${issue.id}</td>
-        </tr>
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; background: #f8f9fa;"><strong>Status</strong></td>
-          <td style="padding: 8px; border: 1px solid #ddd;">${issue.status}</td>
-        </tr>
-        ${issue.assignee ? `
-        <tr>
-          <td style="padding: 8px; border: 1px solid #ddd; background: #f8f9fa;"><strong>Assignee</strong></td>
-          <td style="padding: 8px; border: 1px solid #ddd;">@${issue.assignee}</td>
-        </tr>
-        ` : ''}
-      </table>
-      <p style="color: #999; font-size: 12px;">
-        You received this because you have email notifications enabled in Abacus.
-      </p>
-    </div>
-  `
-
-  return { subject, html }
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -387,66 +280,75 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       notify_actions: u.notify_actions
     })))
 
-    // Send notifications
-    if (env.RESEND_API_KEY) {
-      // Get all starred issues for this repo to check favorites
-      const issueIds = changes.map(c => c.issue.id)
-      const userIds = usersToNotify.results.map(u => u.id)
+    // Queue notifications for batched sending
+    // Get all starred issues for this repo to check favorites
+    const issueIds = changes.map(c => c.issue.id)
+    const userIds = usersToNotify.results.map(u => u.id)
 
-      // Build a set of "userId:issueId" for quick lookup
-      const starredSet = new Set<string>()
-      if (userIds.length > 0 && issueIds.length > 0) {
-        const starsResult = await env.DB.prepare(`
-          SELECT user_id, issue_id FROM stars
-          WHERE repo_owner = ? AND repo_name = ?
-            AND user_id IN (${userIds.map(() => '?').join(',')})
-            AND issue_id IN (${issueIds.map(() => '?').join(',')})
-        `).bind(repoOwner, repoName, ...userIds, ...issueIds).all() as { results: Array<{ user_id: number; issue_id: string }> }
+    // Build a set of "userId:issueId" for quick lookup
+    const starredSet = new Set<string>()
+    if (userIds.length > 0 && issueIds.length > 0) {
+      const starsResult = await env.DB.prepare(`
+        SELECT user_id, issue_id FROM stars
+        WHERE repo_owner = ? AND repo_name = ?
+          AND user_id IN (${userIds.map(() => '?').join(',')})
+          AND issue_id IN (${issueIds.map(() => '?').join(',')})
+      `).bind(repoOwner, repoName, ...userIds, ...issueIds).all() as { results: Array<{ user_id: number; issue_id: string }> }
 
-        for (const star of starsResult.results) {
-          starredSet.add(`${star.user_id}:${star.issue_id}`)
-        }
+      for (const star of starsResult.results) {
+        starredSet.add(`${star.user_id}:${star.issue_id}`)
       }
+    }
 
-      for (const change of changes) {
-        // Map changeType to action
-        const action = change.changeType === 'created' ? 'open' : change.changeType
+    for (const change of changes) {
+      // Map changeType to action
+      const action = change.changeType === 'created' ? 'open' : change.changeType
 
-        for (const user of usersToNotify.results) {
-          const notifyIssues = user.notify_issues || 'assigned'
-          const notifyActions = (user.notify_actions || 'open,update,close').split(',')
+      for (const user of usersToNotify.results) {
+        const notifyIssues = user.notify_issues || 'assigned'
+        const notifyActions = (user.notify_actions || 'open,update,close').split(',')
 
-          // Skip if user doesn't want notifications for this action
-          if (!notifyActions.includes(action)) {
-            continue
-          }
+        // Skip if user doesn't want notifications for this action
+        if (!notifyActions.includes(action)) {
+          continue
+        }
 
-          // Skip if notify_issues is 'none'
-          if (notifyIssues === 'none') {
-            continue
-          }
+        // Skip if notify_issues is 'none'
+        if (notifyIssues === 'none') {
+          continue
+        }
 
-          // Check if user should be notified based on their settings
-          const isAssignee = change.issue.assignee === user.github_login
-          const isFavorite = starredSet.has(`${user.id}:${change.issue.id}`)
+        // Check if user should be notified based on their settings
+        const isAssignee = change.issue.assignee === user.github_login
+        const isFavorite = starredSet.has(`${user.id}:${change.issue.id}`)
 
-          let shouldNotify = false
-          if (notifyIssues === 'all') {
-            shouldNotify = true
-          } else if (notifyIssues === 'assigned') {
-            shouldNotify = isAssignee
-          } else if (notifyIssues === 'favorites') {
-            shouldNotify = isFavorite
-          }
+        let shouldNotify = false
+        if (notifyIssues === 'all') {
+          shouldNotify = true
+        } else if (notifyIssues === 'assigned') {
+          shouldNotify = isAssignee
+        } else if (notifyIssues === 'favorites') {
+          shouldNotify = isFavorite
+        }
 
-          if (shouldNotify) {
-            console.log('[webhook] Sending email to:', user.github_login, 'for issue:', change.issue.id, 'action:', change.changeType)
-            const { subject, html } = formatEmail(repoFullName, change.issue, change.changeType, change.oldIssue)
-            const sent = await sendEmail(user.email, subject, html, env.RESEND_API_KEY)
-            console.log('[webhook] Email sent result:', sent)
-          } else {
-            console.log('[webhook] Skipping notification for:', user.github_login, 'notifyIssues:', notifyIssues, 'shouldNotify:', shouldNotify)
-          }
+        if (shouldNotify) {
+          console.log('[webhook] Queueing notification for:', user.github_login, 'issue:', change.issue.id, 'action:', change.changeType)
+          await queueNotification(env.DB, {
+            userId: user.id,
+            repoOwner,
+            repoName,
+            issueId: change.issue.id,
+            issueTitle: change.issue.title,
+            changeType: change.changeType,
+            changeDetails: change.oldIssue ? JSON.stringify({
+              oldStatus: change.oldIssue.status,
+              newStatus: change.issue.status,
+              oldAssignee: change.oldIssue.assignee,
+              newAssignee: change.issue.assignee,
+            }) : undefined,
+          })
+        } else {
+          console.log('[webhook] Skipping notification for:', user.github_login, 'notifyIssues:', notifyIssues, 'shouldNotify:', shouldNotify)
         }
       }
     }

@@ -11,5 +11,13 @@ database_id = "0d2be46d-1c4b-4a2a-943a-cbe42288ab94"
 binding = "SESSIONS"
 id = "3c17b527f5994ef3b62522922fa9d8df"
 
+# Cron trigger for batched notifications
+# Cloudflare Pages doesn't support cron triggers directly.
+# Set up a separate Cloudflare Worker or external cron service to POST to
+# /api/notifications/send every minute.
+#
+# Backoff schedule: 1min -> 2min -> 4min -> 5min (max)
+# This batches rapid changes together and reduces notification spam.
+
 [vars]
 # Set GITHUB_TOKEN and SESSION_SECRET in Cloudflare dashboard secrets for production
