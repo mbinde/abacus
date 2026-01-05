@@ -12,9 +12,11 @@ binding = "SESSIONS"
 id = "3c17b527f5994ef3b62522922fa9d8df"
 
 # Cron trigger for batched notifications
-# Cloudflare Pages doesn't support cron triggers directly.
-# Set up a separate Cloudflare Worker or external cron service to POST to
+# See workers/notification-cron/ for the cron worker that POSTs to
 # /api/notifications/send every minute.
+#
+# To deploy: cd workers/notification-cron && npm install && npm run deploy
+# Set RESEND_API_KEY secret: wrangler secret put RESEND_API_KEY
 #
 # Backoff schedule: 1min -> 2min -> 4min -> 5min (max)
 # This batches rapid changes together and reduces notification spam.

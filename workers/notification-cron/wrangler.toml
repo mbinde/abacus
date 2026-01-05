@@ -1,0 +1,11 @@
+name = "abacus-notification-cron"
+main = "src/index.ts"
+compatibility_date = "2024-12-01"
+
+# Cron trigger - runs every minute
+[triggers]
+crons = ["* * * * *"]
+
+[vars]
+# The URL to POST to - set in Cloudflare dashboard for production
+NOTIFICATION_ENDPOINT = "https://abacus.pages.dev/api/notifications/send"
