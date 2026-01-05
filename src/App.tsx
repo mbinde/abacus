@@ -264,6 +264,13 @@ export default function App() {
       if (res.ok) {
         const data = await res.json() as { issues: Issue[] }
         setIssues(data.issues)
+        // Update selectedIssue if it exists in the new data
+        if (selectedIssue) {
+          const updated = data.issues.find(i => i.id === selectedIssue.id)
+          if (updated) {
+            setSelectedIssue(updated)
+          }
+        }
       } else {
         const data = await res.json() as { error?: string }
         setError(data.error || 'Failed to load issues')
