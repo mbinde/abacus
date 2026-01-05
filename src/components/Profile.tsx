@@ -413,21 +413,35 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
           {provisionalSecret && (
             <div>
               <div style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>⏳ Configuration in progress</div>
-              <div style={{ color: '#888', marginBottom: '0.5rem' }}>
+              <div style={{ color: '#888', marginBottom: '0.75rem' }}>
                 1. Go to <a href={`https://github.com/${repo.owner}/${repo.name}/settings/hooks/new`} target="_blank" rel="noopener noreferrer">Add webhook</a><br />
-                2. Payload URL: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>{window.location.origin}/api/webhooks/github</code><br />
+                2. Payload URL: (copy below)<br />
                 3. Content type: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>application/json</code><br />
-                4. Secret: (value below)<br />
+                4. Secret: (copy below)<br />
                 5. Select "Just the push event"<br />
                 6. Click "Add webhook", then Confirm below
               </div>
-              <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem', marginBottom: '0.5rem' }}>
-                <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all', fontSize: '0.7rem' }}>
-                  {provisionalSecret}
-                </code>
-                <button onClick={() => copyToClipboard(provisionalSecret)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
-                  Copy
-                </button>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '0.25rem' }}>Payload URL:</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all', fontSize: '0.7rem' }}>
+                    {window.location.origin}/api/webhooks/github
+                  </code>
+                  <button onClick={() => copyToClipboard(`${window.location.origin}/api/webhooks/github`)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.75rem' }}>
+                <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '0.25rem' }}>Secret:</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all', fontSize: '0.7rem' }}>
+                    {provisionalSecret}
+                  </code>
+                  <button onClick={() => copyToClipboard(provisionalSecret)} style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
+                    Copy
+                  </button>
+                </div>
               </div>
               <button
                 onClick={() => handleConfirmWebhook(repo.id)}
