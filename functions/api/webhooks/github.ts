@@ -212,12 +212,23 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   console.log('[webhook] Received event:', event)
 
-  // Parse payload to get repo info for signature verification
+  // Parse payload
   let data: PushEvent
   try {
     data = JSON.parse(payload) as PushEvent
-  } catch {
+  } catch (err) {
+    console.error('[webhook] Failed to parse payload:', err)
     return new Response('Invalid payload', { status: 400 })
+  }
+
+  // Check for required fields - ping events have different structure
+  if (!data.repository?.owner?.login || !data.repository?.name) {
+    console.log('[webhook] Missing repository info, event type:', event)
+    // For ping events without full repo info, just acknowledge
+    if (event === 'ping') {
+      return new Response('Pong', { status: 200 })
+    }
+    return new Response('Missing repository info', { status: 400 })
   }
 
   const repoOwner = data.repository.owner.login
@@ -225,10 +236,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const repoFullName = data.repository.full_name
 
   try {
+    console.log('[webhook] Processing for repo:', repoOwner, '/', repoName)
+
     // Look up the webhook secret for this repo (now global, not per-user)
     const repo = await env.DB.prepare(
       'SELECT id, webhook_secret, webhook_owner_id FROM repos WHERE owner = ? AND name = ?'
     ).bind(repoOwner, repoName).first() as { id: number; webhook_secret: string | null; webhook_owner_id: number | null } | null
+
+    console.log('[webhook] Repo lookup result:', repo ? `id=${repo.id}, hasSecret=${!!repo.webhook_secret}` : 'not found')
 
     if (!repo) {
       // No one tracking this repo, nothing to do
@@ -247,9 +262,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         'SELECT id, user_id, secret FROM provisional_webhook_secrets WHERE repo_id = ?'
       ).bind(repo.id).all() as { results: Array<{ id: number; user_id: number; secret: string }> }
 
+      console.log('[webhook] Checking', provisionalSecrets.results.length, 'provisional secrets')
+
       for (const provisional of provisionalSecrets.results) {
         if (await verifySignature(payload, signature, provisional.secret)) {
           isValid = true
+          console.log('[webhook] Matched provisional secret id:', provisional.id)
           // Mark this provisional secret as verified by updating its timestamp
           await env.DB.prepare(
             'UPDATE provisional_webhook_secrets SET verified_at = CURRENT_TIMESTAMP WHERE id = ?'
@@ -260,8 +278,11 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     }
 
     if (!isValid) {
+      console.log('[webhook] Signature verification failed')
       return new Response('Invalid signature', { status: 401 })
     }
+
+    console.log('[webhook] Signature verified successfully')
 
     // Handle ping events (just acknowledge, used for verification)
     if (event === 'ping') {
