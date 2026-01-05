@@ -42,7 +42,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Abacus <notifications@abacus.motleywoods.dev>',
+        from: 'Abacus <notifications@motleywoods.dev>',
         to: [to],
         subject: 'Abacus Test Email',
         html: `
