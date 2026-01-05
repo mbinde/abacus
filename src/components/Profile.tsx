@@ -416,7 +416,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
               <div style={{ color: '#888', marginBottom: '0.75rem' }}>
                 1. Go to <a href={`https://github.com/${repo.owner}/${repo.name}/settings/hooks/new`} target="_blank" rel="noopener noreferrer">Add webhook</a><br />
                 2. Payload URL: (copy below)<br />
-                3. Content type: <code style={{ background: '#1a1a24', padding: '0.125rem 0.25rem', borderRadius: '2px' }}>application/json</code><br />
+                3. Content type: <strong style={{ color: '#f59e0b' }}>application/json</strong> (important!)<br />
                 4. Secret: (copy below)<br />
                 5. Select "Just the push event"<br />
                 6. Click "Add webhook", then Confirm below

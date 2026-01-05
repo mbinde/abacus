@@ -212,6 +212,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   console.log('[webhook] Received event:', event)
 
+  // Check content type - must be JSON
+  const contentType = request.headers.get('Content-Type') || ''
+  if (contentType.includes('x-www-form-urlencoded')) {
+    console.error('[webhook] Wrong content type:', contentType)
+    return new Response(
+      'Webhook misconfigured: Content type must be "application/json", not "application/x-www-form-urlencoded". ' +
+      'Please update your webhook settings on GitHub.',
+      { status: 400 }
+    )
+  }
+
   // Parse payload
   let data: PushEvent
   try {
@@ -220,7 +231,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     console.error('[webhook] Failed to parse payload:', err)
     console.error('[webhook] Raw payload (first 500 chars):', payload.substring(0, 500))
     console.error('[webhook] Payload length:', payload.length)
-    return new Response('Invalid payload', { status: 400 })
+    return new Response('Invalid payload - expected JSON', { status: 400 })
   }
 
   // Check for required fields - ping events have different structure
