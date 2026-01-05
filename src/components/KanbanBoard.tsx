@@ -7,6 +7,7 @@ interface Issue {
   status: 'open' | 'closed' | 'in_progress'
   priority: number
   issue_type: 'bug' | 'feature' | 'task' | 'epic'
+  assignee?: string
   created_at: string
   updated_at?: string
 }

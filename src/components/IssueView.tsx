@@ -18,6 +18,7 @@ interface Issue {
   status: 'open' | 'closed' | 'in_progress'
   priority: number
   issue_type: 'bug' | 'feature' | 'task' | 'epic'
+  assignee?: string
   created_at: string
   updated_at?: string
   closed_at?: string
@@ -113,6 +114,11 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
             <span style={{ color: '#666' }}>
               {issue.issue_type}
             </span>
+            {issue.assignee && (
+              <span style={{ color: '#4dc3ff' }}>
+                @{issue.assignee}
+              </span>
+            )}
             <code style={{ color: '#666', fontSize: '0.75rem' }}>{issue.id}</code>
           </div>
         </div>

@@ -9,6 +9,7 @@ interface Issue {
   status: 'open' | 'closed' | 'in_progress'
   priority: number
   issue_type: 'bug' | 'feature' | 'task' | 'epic'
+  assignee?: string
   created_at: string
   updated_at?: string
   closed_at?: string
@@ -377,8 +378,8 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
             <SortHeader column="type" label="Type" />
             <SortHeader column="status" label="Status" />
             <SortHeader column="priority" label="Priority" />
+            <th>Assignee</th>
             <SortHeader column="updated" label="Updated" />
-            <th>Actions</th>
           </tr>
         </thead>
         <tbody ref={tableRef}>
@@ -432,27 +433,14 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
                 <PriorityIndicator priority={issue.priority} />
               </td>
               <td>
-                <TimeAgo date={issue.updated_at || issue.created_at} />
+                {issue.assignee && (
+                  <span style={{ color: '#4dc3ff', fontSize: '0.875rem' }}>
+                    @{issue.assignee}
+                  </span>
+                )}
               </td>
               <td>
-                <div className="flex" style={{ gap: '0.5rem' }}>
-                  <button
-                    onClick={() => onEdit(issue)}
-                    style={{ padding: '0.25rem 0.5rem', fontSize: '0.875rem' }}
-                  >
-                    Edit
-                  </button>
-                  <button
-                    onClick={() => onDelete(issue.id)}
-                    className="btn-danger"
-                    style={{
-                      padding: '0.25rem 0.5rem',
-                      fontSize: '0.875rem'
-                    }}
-                  >
-                    Delete
-                  </button>
-                </div>
+                <TimeAgo date={issue.updated_at || issue.created_at} />
               </td>
             </tr>
           ))}

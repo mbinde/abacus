@@ -9,6 +9,7 @@ interface Issue {
   status: 'open' | 'closed' | 'in_progress'
   priority: number
   issue_type: 'bug' | 'feature' | 'task' | 'epic'
+  assignee?: string
   created_at: string
   updated_at?: string
   closed_at?: string
@@ -129,6 +130,7 @@ async function updateIssueWithMerge(
       status: updates.status ?? existing.status,
       priority: updates.priority ?? existing.priority,
       issue_type: updates.issue_type ?? existing.issue_type,
+      assignee: updates.assignee !== undefined ? updates.assignee : existing.assignee,
       updated_at: new Date().toISOString(),
     }
     if (updated.status === 'closed' && !updated.closed_at) {
@@ -356,6 +358,7 @@ function normalizeIssue(obj: Record<string, unknown>): Issue {
     status: normalizeStatus(obj.status),
     priority: Number(obj.priority) || 3,
     issue_type: normalizeType(obj.issue_type || obj.type),
+    assignee: obj.assignee ? String(obj.assignee) : undefined,
     created_at: String(obj.created_at || obj.created || new Date().toISOString()),
     updated_at: obj.updated_at ? String(obj.updated_at) : undefined,
     closed_at: obj.closed_at ? String(obj.closed_at) : undefined,
@@ -401,6 +404,7 @@ function serializeJsonlIssue(issue: Issue): string {
     status: issue.status,
     priority: issue.priority,
     issue_type: issue.issue_type,
+    assignee: issue.assignee || '',
     created_at: issue.created_at,
     updated_at: issue.updated_at || new Date().toISOString(),
     closed_at: issue.closed_at,

@@ -9,6 +9,7 @@ interface Issue {
   status: 'open' | 'closed' | 'in_progress'
   priority: number
   issue_type: 'bug' | 'feature' | 'task' | 'epic'
+  assignee?: string
   created_at: string
   updated_at?: string
   closed_at?: string
@@ -29,6 +30,7 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
   const [issueType, setIssueType] = useState<Issue['issue_type']>(issue?.issue_type || 'task')
   const [status, setStatus] = useState<Issue['status']>(issue?.status || 'open')
   const [priority, setPriority] = useState(issue?.priority || 3)
+  const [assignee, setAssignee] = useState(issue?.assignee || '')
   const [links, setLinks] = useState<GitHubLink[]>(issue?.links || [])
 
   function handleSubmit(e: FormEvent) {
@@ -40,6 +42,7 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
       issue_type: issueType,
       status,
       priority,
+      assignee: assignee || undefined,
       links: links.length > 0 ? links : undefined,
     }
 
@@ -84,8 +87,8 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
           />
         </div>
 
-        <div className="flex mb-2">
-          <div style={{ flex: 1 }}>
+        <div className="flex mb-2" style={{ flexWrap: 'wrap' }}>
+          <div style={{ flex: '1 1 120px', minWidth: '120px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
               Type
             </label>
@@ -97,7 +100,7 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
             </select>
           </div>
 
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: '1 1 120px', minWidth: '120px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
               Status
             </label>
@@ -108,7 +111,7 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
             </select>
           </div>
 
-          <div style={{ flex: 1 }}>
+          <div style={{ flex: '1 1 120px', minWidth: '120px' }}>
             <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
               Priority
             </label>
@@ -119,6 +122,18 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
               <option value={4}>4 - Low</option>
               <option value={5}>5 - Lowest</option>
             </select>
+          </div>
+
+          <div style={{ flex: '1 1 150px', minWidth: '150px' }}>
+            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+              Assignee
+            </label>
+            <input
+              type="text"
+              value={assignee}
+              onChange={(e) => setAssignee(e.target.value)}
+              placeholder="GitHub username"
+            />
           </div>
         </div>
 
