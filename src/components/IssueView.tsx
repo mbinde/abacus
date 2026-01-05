@@ -63,11 +63,15 @@ const typeEmoji: Record<string, string> = {
   epic: '',
 }
 
+interface PendingComment extends Comment {
+  status: 'saving' | 'failed'
+}
+
 export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, currentUser, onCommentAdded }: Props) {
   const [newComment, setNewComment] = useState('')
   const [commentLoading, setCommentLoading] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
-  const [optimisticComments, setOptimisticComments] = useState<Comment[]>([])
+  const [pendingComments, setPendingComments] = useState<PendingComment[]>([])
 
   async function handleAddComment(e: FormEvent) {
     e.preventDefault()
@@ -77,15 +81,16 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
     setCommentLoading(true)
     setCommentError(null)
 
-    // Optimistically add the comment immediately
-    const tempComment: Comment = {
-      id: Date.now(), // Temporary ID
+    // Add comment immediately with 'saving' status
+    const tempComment: PendingComment = {
+      id: Date.now(),
       issue_id: issue.id,
       author: currentUser.login,
       text: commentText,
       created_at: new Date().toISOString(),
+      status: 'saving',
     }
-    setOptimisticComments(prev => [...prev, tempComment])
+    setPendingComments(prev => [...prev, tempComment])
     setNewComment('')
 
     try {
@@ -96,46 +101,51 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
       })
 
       if (res.ok) {
-        // Background refresh to get the real comment data eventually
+        // Mark as no longer pending (will be cleaned up when server data arrives)
+        setPendingComments(prev => prev.filter(c => c.id !== tempComment.id))
         onCommentAdded?.()
       } else {
-        // Remove optimistic comment on failure
-        setOptimisticComments(prev => prev.filter(c => c.id !== tempComment.id))
+        // Mark as failed - keep the comment visible
+        setPendingComments(prev => prev.map(c =>
+          c.id === tempComment.id ? { ...c, status: 'failed' as const } : c
+        ))
         const data = await res.json() as { error?: string }
-        const errorMsg = data.error || 'Failed to add comment'
-        setCommentError(errorMsg)
-        alert(`Error saving comment: ${errorMsg}`)
+        setCommentError(data.error || 'Failed to add comment')
       }
     } catch (err) {
-      // Remove optimistic comment on failure
-      setOptimisticComments(prev => prev.filter(c => c.id !== tempComment.id))
-      const errorMsg = err instanceof Error ? err.message : 'Failed to add comment'
-      setCommentError(errorMsg)
-      alert(`Error saving comment: ${errorMsg}`)
+      // Mark as failed - keep the comment visible
+      setPendingComments(prev => prev.map(c =>
+        c.id === tempComment.id ? { ...c, status: 'failed' as const } : c
+      ))
+      setCommentError(err instanceof Error ? err.message : 'Failed to add comment')
     } finally {
       setCommentLoading(false)
     }
   }
 
-  // Merge server comments with optimistic ones, avoiding duplicates
+  function dismissFailedComment(commentId: number) {
+    setPendingComments(prev => prev.filter(c => c.id !== commentId))
+  }
+
+  // Merge server comments with pending ones, avoiding duplicates
   const serverComments = issue.comments || []
-  const allComments = [...serverComments]
-  for (const opt of optimisticComments) {
-    // Check if this optimistic comment is now in server data (by matching text and author)
+  const allComments: (Comment | PendingComment)[] = [...serverComments]
+  for (const pending of pendingComments) {
+    // Check if this pending comment is now in server data
     const exists = serverComments.some(
-      sc => sc.author === opt.author && sc.text === opt.text
+      sc => sc.author === pending.author && sc.text === pending.text
     )
     if (!exists) {
-      allComments.push(opt)
+      allComments.push(pending)
     }
   }
-  // Clean up optimistic comments that are now in server data
-  if (optimisticComments.length > 0 && serverComments.length > 0) {
-    const stillPending = optimisticComments.filter(
-      opt => !serverComments.some(sc => sc.author === opt.author && sc.text === opt.text)
+  // Clean up pending comments that are now in server data
+  if (pendingComments.length > 0 && serverComments.length > 0) {
+    const stillPending = pendingComments.filter(
+      p => !serverComments.some(sc => sc.author === p.author && sc.text === p.text)
     )
-    if (stillPending.length !== optimisticComments.length) {
-      setOptimisticComments(stillPending)
+    if (stillPending.length !== pendingComments.length) {
+      setPendingComments(stillPending)
     }
   }
 
@@ -232,28 +242,78 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
 
         {allComments.length > 0 && (
           <div style={{ marginBottom: '0.75rem' }}>
-            {allComments.map((comment) => (
-              <div
-                key={comment.id}
-                style={{
-                  padding: '0.5rem 0.75rem',
-                  marginBottom: '0.5rem',
-                  background: '#1a1a24',
-                  borderRadius: '4px',
-                  border: '1px solid #2a2a3a',
-                }}
-              >
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
-                  <span style={{ fontWeight: 600, color: '#4dc3ff' }}>@{comment.author}</span>
-                  <span style={{ color: '#666' }}>
-                    {new Date(comment.created_at).toLocaleString()}
-                  </span>
+            {allComments.map((comment) => {
+              const isPending = 'status' in comment
+              const isSaving = isPending && comment.status === 'saving'
+              const isFailed = isPending && comment.status === 'failed'
+
+              return (
+                <div
+                  key={comment.id}
+                  style={{
+                    padding: '0.5rem 0.75rem',
+                    marginBottom: '0.5rem',
+                    background: '#1a1a24',
+                    borderRadius: '4px',
+                    border: isFailed ? '2px solid #dc2626' : isSaving ? '2px solid #ca8a04' : '1px solid #2a2a3a',
+                  }}
+                >
+                  {/* Status banner for pending comments */}
+                  {isSaving && (
+                    <div style={{
+                      background: '#854d0e',
+                      color: '#fef08a',
+                      padding: '0.375rem 0.5rem',
+                      margin: '-0.5rem -0.75rem 0.5rem -0.75rem',
+                      borderRadius: '2px 2px 0 0',
+                      fontSize: '0.8rem',
+                      fontWeight: 500,
+                    }}>
+                      Saving to git... (comment will appear shortly)
+                    </div>
+                  )}
+                  {isFailed && (
+                    <div style={{
+                      background: '#991b1b',
+                      color: '#fecaca',
+                      padding: '0.375rem 0.5rem',
+                      margin: '-0.5rem -0.75rem 0.5rem -0.75rem',
+                      borderRadius: '2px 2px 0 0',
+                      fontSize: '0.8rem',
+                    }}>
+                      <div style={{ fontWeight: 600, marginBottom: '0.25rem' }}>
+                        Failed to save comment!
+                      </div>
+                      <div>Copy your comment text before dismissing, then try again.</div>
+                      <button
+                        onClick={() => dismissFailedComment(comment.id)}
+                        style={{
+                          marginTop: '0.375rem',
+                          padding: '0.25rem 0.5rem',
+                          fontSize: '0.75rem',
+                          background: '#7f1d1d',
+                          border: '1px solid #dc2626',
+                          color: '#fecaca',
+                          cursor: 'pointer',
+                          borderRadius: '3px',
+                        }}
+                      >
+                        Dismiss
+                      </button>
+                    </div>
+                  )}
+                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '0.25rem', fontSize: '0.8rem' }}>
+                    <span style={{ fontWeight: 600, color: '#4dc3ff' }}>@{comment.author}</span>
+                    <span style={{ color: '#666' }}>
+                      {new Date(comment.created_at).toLocaleString()}
+                    </span>
+                  </div>
+                  <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
+                    <MentionText text={comment.text} />
+                  </div>
                 </div>
-                <div style={{ whiteSpace: 'pre-wrap', fontSize: '0.9rem' }}>
-                  <MentionText text={comment.text} />
-                </div>
-              </div>
-            ))}
+              )
+            })}
           </div>
         )}
 
