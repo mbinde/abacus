@@ -528,13 +528,17 @@ export default function App() {
     <div className="container">
       <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
 
-      {(view === 'list' || view === 'activity' || view === 'dashboard') && (
+      {(view === 'list' || view === 'activity' || view === 'dashboard') ? (
         <RepoSelector
           repos={repos}
           selected={selectedRepo}
           onSelect={setSelectedRepo}
           onAdd={handleAddRepo}
         />
+      ) : selectedRepo && (
+        <div style={{ padding: '0.5rem 0', color: '#888', fontSize: '0.9rem' }}>
+          {selectedRepo.owner}/{selectedRepo.name}
+        </div>
       )}
 
       {error && <div className="error">{error}</div>}
