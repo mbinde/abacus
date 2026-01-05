@@ -28,12 +28,17 @@ interface Issue {
   links?: GitHubLink[]
 }
 
+interface User {
+  login: string
+}
+
 interface Props {
   issue: Issue
   onEdit: () => void
   onClose: () => void
   repoOwner: string
   repoName: string
+  currentUser: User
   onCommentAdded?: () => void
 }
 
@@ -58,35 +63,52 @@ const typeEmoji: Record<string, string> = {
   epic: '',
 }
 
-export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, onCommentAdded }: Props) {
+export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, currentUser, onCommentAdded }: Props) {
   const [newComment, setNewComment] = useState('')
   const [commentLoading, setCommentLoading] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
+  const [optimisticComments, setOptimisticComments] = useState<Comment[]>([])
 
   async function handleAddComment(e: FormEvent) {
     e.preventDefault()
     if (!newComment.trim()) return
 
+    const commentText = newComment.trim()
     setCommentLoading(true)
     setCommentError(null)
+
+    // Optimistically add the comment immediately
+    const tempComment: Comment = {
+      id: Date.now(), // Temporary ID
+      issue_id: issue.id,
+      author: currentUser.login,
+      text: commentText,
+      created_at: new Date().toISOString(),
+    }
+    setOptimisticComments(prev => [...prev, tempComment])
+    setNewComment('')
 
     try {
       const res = await fetch(`/api/repos/${repoOwner}/${repoName}/issues/${issue.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ text: newComment.trim() }),
+        body: JSON.stringify({ text: commentText }),
       })
 
       if (res.ok) {
-        setNewComment('')
+        // Background refresh to get the real comment data eventually
         onCommentAdded?.()
       } else {
+        // Remove optimistic comment on failure
+        setOptimisticComments(prev => prev.filter(c => c.id !== tempComment.id))
         const data = await res.json() as { error?: string }
         const errorMsg = data.error || 'Failed to add comment'
         setCommentError(errorMsg)
         alert(`Error saving comment: ${errorMsg}`)
       }
     } catch (err) {
+      // Remove optimistic comment on failure
+      setOptimisticComments(prev => prev.filter(c => c.id !== tempComment.id))
       const errorMsg = err instanceof Error ? err.message : 'Failed to add comment'
       setCommentError(errorMsg)
       alert(`Error saving comment: ${errorMsg}`)
@@ -95,7 +117,27 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
     }
   }
 
-  const comments = issue.comments || []
+  // Merge server comments with optimistic ones, avoiding duplicates
+  const serverComments = issue.comments || []
+  const allComments = [...serverComments]
+  for (const opt of optimisticComments) {
+    // Check if this optimistic comment is now in server data (by matching text and author)
+    const exists = serverComments.some(
+      sc => sc.author === opt.author && sc.text === opt.text
+    )
+    if (!exists) {
+      allComments.push(opt)
+    }
+  }
+  // Clean up optimistic comments that are now in server data
+  if (optimisticComments.length > 0 && serverComments.length > 0) {
+    const stillPending = optimisticComments.filter(
+      opt => !serverComments.some(sc => sc.author === opt.author && sc.text === opt.text)
+    )
+    if (stillPending.length !== optimisticComments.length) {
+      setOptimisticComments(stillPending)
+    }
+  }
 
   return (
     <div className="card">
@@ -185,12 +227,12 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
       {/* Comments section */}
       <div style={{ borderTop: '1px solid #333', paddingTop: '1rem', marginTop: '1rem' }}>
         <div style={{ fontSize: '0.9rem', color: '#888', marginBottom: '0.75rem' }}>
-          Comments ({comments.length})
+          Comments ({allComments.length})
         </div>
 
-        {comments.length > 0 && (
+        {allComments.length > 0 && (
           <div style={{ marginBottom: '0.75rem' }}>
-            {comments.map((comment) => (
+            {allComments.map((comment) => (
               <div
                 key={comment.id}
                 style={{

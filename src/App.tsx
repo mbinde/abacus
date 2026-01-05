@@ -621,6 +621,7 @@ export default function App() {
               onClose={() => navigate('list')}
               repoOwner={selectedRepo.owner}
               repoName={selectedRepo.name}
+              currentUser={user}
               onCommentAdded={loadIssues}
             />
           )}
