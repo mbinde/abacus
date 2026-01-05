@@ -412,14 +412,8 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
 
           {provisionalSecret && (
             <div>
-              <div style={{ color: '#f59e0b', marginBottom: '0.5rem' }}>⏳ Configuration in progress</div>
-              <div style={{ color: '#888', marginBottom: '0.75rem' }}>
-                1. Go to <a href={`https://github.com/${repo.owner}/${repo.name}/settings/hooks/new`} target="_blank" rel="noopener noreferrer">Add webhook</a><br />
-                2. Payload URL: (copy below)<br />
-                3. Content type: <strong style={{ color: '#f59e0b' }}>application/json</strong> (important!)<br />
-                4. Secret: (copy below)<br />
-                5. Select "Just the push event"<br />
-                6. Click "Add webhook", then Confirm below
+              <div style={{ color: '#f59e0b', marginBottom: '0.75rem' }}>
+                ⏳ <a href={`https://github.com/${repo.owner}/${repo.name}/settings/hooks/new`} target="_blank" rel="noopener noreferrer">Add webhook on GitHub</a> with these settings:
               </div>
               <div style={{ marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '0.25rem' }}>Payload URL:</div>
@@ -432,7 +426,18 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                   </button>
                 </div>
               </div>
-              <div style={{ marginBottom: '0.75rem' }}>
+              <div style={{ marginBottom: '0.5rem' }}>
+                <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '0.25rem' }}>Content type:</div>
+                <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+                  <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, fontSize: '0.7rem' }}>
+                    application/json
+                  </code>
+                  <button onClick={() => copyToClipboard('application/json')} style={{ fontSize: '0.7rem', padding: '0.25rem 0.5rem' }}>
+                    Copy
+                  </button>
+                </div>
+              </div>
+              <div style={{ marginBottom: '0.5rem' }}>
                 <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '0.25rem' }}>Secret:</div>
                 <div style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
                   <code style={{ background: '#1a1a24', padding: '0.25rem 0.5rem', borderRadius: '3px', flex: 1, wordBreak: 'break-all', fontSize: '0.7rem' }}>
@@ -442,6 +447,9 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                     Copy
                   </button>
                 </div>
+              </div>
+              <div style={{ fontSize: '0.7rem', color: '#888', marginBottom: '0.75rem' }}>
+                Select "Just the push event", then click "Add webhook"
               </div>
               <button
                 onClick={() => handleConfirmWebhook(repo.id)}
