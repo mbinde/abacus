@@ -118,14 +118,19 @@ async function sendEmail(
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        from: 'Abacus <notifications@abacus.dev>',
+        from: 'Abacus <notifications@abacus.motleywoods.dev>',
         to: [to],
         subject,
         html,
       }),
     })
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.error('[webhook] Resend API error:', res.status, errorText)
+    }
     return res.ok
-  } catch {
+  } catch (err) {
+    console.error('[webhook] sendEmail exception:', err)
     return false
   }
 }
@@ -214,6 +219,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   const event = request.headers.get('X-GitHub-Event')
 
+  console.log('[webhook] Received event:', event)
+
   // Parse payload to get repo info for signature verification
   let data: PushEvent
   try {
@@ -281,6 +288,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       commit.added.includes('.beads/issues.jsonl')
     )
 
+    console.log('[webhook] beadsModified:', beadsModified, 'commits:', data.commits.length)
+
     if (!beadsModified) {
       return new Response('OK', { status: 200 })
     }
@@ -347,6 +356,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     const oldIssues: BeadsIssue[] = JSON.parse(prevState.issues_snapshot)
     const changes = detectChanges(oldIssues, currentIssues)
 
+    console.log('[webhook] Detected changes:', changes.length, changes.map(c => ({ id: c.issue.id, type: c.changeType })))
+
     if (changes.length === 0) {
       // Update hash even if no meaningful changes detected
       await env.DB.prepare(`
@@ -368,6 +379,13 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       WHERE r.owner = ? AND r.name = ?
         AND u.email IS NOT NULL
     `).bind(repoOwner, repoName).all() as { results: UserWithEmail[] }
+
+    console.log('[webhook] Users to notify:', usersToNotify.results.map(u => ({
+      login: u.github_login,
+      email: u.email ? 'set' : 'null',
+      notify_issues: u.notify_issues,
+      notify_actions: u.notify_actions
+    })))
 
     // Send notifications
     if (env.RESEND_API_KEY) {
@@ -422,8 +440,12 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
           }
 
           if (shouldNotify) {
+            console.log('[webhook] Sending email to:', user.github_login, 'for issue:', change.issue.id, 'action:', change.changeType)
             const { subject, html } = formatEmail(repoFullName, change.issue, change.changeType, change.oldIssue)
-            await sendEmail(user.email, subject, html, env.RESEND_API_KEY)
+            const sent = await sendEmail(user.email, subject, html, env.RESEND_API_KEY)
+            console.log('[webhook] Email sent result:', sent)
+          } else {
+            console.log('[webhook] Skipping notification for:', user.github_login, 'notifyIssues:', notifyIssues, 'shouldNotify:', shouldNotify)
           }
         }
       }
