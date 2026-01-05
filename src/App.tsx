@@ -528,12 +528,14 @@ export default function App() {
     <div className="container">
       <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
 
-      <RepoSelector
-        repos={repos}
-        selected={selectedRepo}
-        onSelect={setSelectedRepo}
-        onAdd={handleAddRepo}
-      />
+      {(view === 'list' || view === 'activity' || view === 'dashboard') && (
+        <RepoSelector
+          repos={repos}
+          selected={selectedRepo}
+          onSelect={setSelectedRepo}
+          onAdd={handleAddRepo}
+        />
+      )}
 
       {error && <div className="error">{error}</div>}
 
