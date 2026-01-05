@@ -218,6 +218,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     data = JSON.parse(payload) as PushEvent
   } catch (err) {
     console.error('[webhook] Failed to parse payload:', err)
+    console.error('[webhook] Raw payload (first 500 chars):', payload.substring(0, 500))
+    console.error('[webhook] Payload length:', payload.length)
     return new Response('Invalid payload', { status: 400 })
   }
 
