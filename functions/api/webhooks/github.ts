@@ -9,6 +9,104 @@ interface Env {
   TOKEN_ENCRYPTION_KEY: string
 }
 
+interface NotificationInfo {
+  userId: number
+  email: string
+  repoOwner: string
+  repoName: string
+  issueId: string
+  issueTitle: string
+  changeType: 'created' | 'updated' | 'closed'
+  changeDetails?: string
+}
+
+// Send email immediately via Resend
+async function sendEmailImmediate(
+  notification: NotificationInfo,
+  apiKey: string
+): Promise<boolean> {
+  const statusEmoji = {
+    open: '🟢',
+    in_progress: '🔵',
+    closed: '⚫',
+  }
+
+  const changeEmoji = {
+    created: '✨',
+    updated: '📝',
+    closed: '✅',
+  }
+
+  const emoji = changeEmoji[notification.changeType] || '📋'
+  const changeLabel = {
+    created: 'Created',
+    updated: 'Updated',
+    closed: 'Closed',
+  }[notification.changeType] || notification.changeType
+
+  let details = ''
+  if (notification.changeDetails) {
+    try {
+      const d = JSON.parse(notification.changeDetails)
+      if (d.oldStatus !== d.newStatus) {
+        const oldEmoji = statusEmoji[d.oldStatus as keyof typeof statusEmoji] || ''
+        const newEmoji = statusEmoji[d.newStatus as keyof typeof statusEmoji] || ''
+        details = `${oldEmoji} ${d.oldStatus} → ${newEmoji} ${d.newStatus}`
+      }
+      if (d.oldAssignee !== d.newAssignee) {
+        if (details) details += ' · '
+        details += `@${d.oldAssignee || 'unassigned'} → @${d.newAssignee || 'unassigned'}`
+      }
+    } catch {
+      // Ignore parse errors
+    }
+  }
+
+  const subject = `[${notification.repoOwner}/${notification.repoName}] ${emoji} ${notification.issueTitle}`
+  const html = `
+    <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
+      <h2 style="color: #333; border-bottom: 1px solid #ddd; padding-bottom: 8px;">
+        ${emoji} Issue ${changeLabel}
+      </h2>
+      <div style="padding: 12px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid ${notification.changeType === 'created' ? '#4ade80' : notification.changeType === 'closed' ? '#666' : '#64b4ff'};">
+        <div style="font-weight: 600; color: #333;">
+          ${notification.issueTitle}
+        </div>
+        <div style="font-size: 12px; color: #888; margin-top: 4px;">
+          <code>${notification.issueId}</code> · ${changeLabel}${details ? ` · ${details}` : ''}
+        </div>
+      </div>
+      <p style="color: #999; font-size: 12px; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 12px;">
+        You received this because you have email notifications enabled in Abacus.
+      </p>
+    </div>
+  `
+
+  try {
+    const res = await fetch('https://api.resend.com/emails', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${apiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        from: 'Abacus <notifications@motleywoods.dev>',
+        to: [notification.email],
+        subject,
+        html,
+      }),
+    })
+    if (!res.ok) {
+      const errorText = await res.text()
+      console.error('[webhook] Resend API error:', res.status, errorText)
+    }
+    return res.ok
+  } catch (err) {
+    console.error('[webhook] sendEmail exception:', err)
+    return false
+  }
+}
+
 interface PushEvent {
   ref: string
   repository: {
@@ -280,7 +378,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       notify_actions: u.notify_actions
     })))
 
-    // Queue notifications for batched sending
+    // Check notification mode setting (default: immediate)
+    const notificationModeSetting = await env.DB.prepare(
+      "SELECT value FROM settings WHERE key = 'notification_mode'"
+    ).first() as { value: string } | null
+    const notificationMode = notificationModeSetting?.value || 'immediate'
+    console.log('[webhook] Notification mode:', notificationMode)
+
+    // Process notifications
     // Get all starred issues for this repo to check favorites
     const issueIds = changes.map(c => c.issue.id)
     const userIds = usersToNotify.results.map(u => u.id)
@@ -332,21 +437,40 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         }
 
         if (shouldNotify) {
-          console.log('[webhook] Queueing notification for:', user.github_login, 'issue:', change.issue.id, 'action:', change.changeType)
-          await queueNotification(env.DB, {
-            userId: user.id,
-            repoOwner,
-            repoName,
-            issueId: change.issue.id,
-            issueTitle: change.issue.title,
-            changeType: change.changeType,
-            changeDetails: change.oldIssue ? JSON.stringify({
-              oldStatus: change.oldIssue.status,
-              newStatus: change.issue.status,
-              oldAssignee: change.oldIssue.assignee,
-              newAssignee: change.issue.assignee,
-            }) : undefined,
-          })
+          const changeDetails = change.oldIssue ? JSON.stringify({
+            oldStatus: change.oldIssue.status,
+            newStatus: change.issue.status,
+            oldAssignee: change.oldIssue.assignee,
+            newAssignee: change.issue.assignee,
+          }) : undefined
+
+          if (notificationMode === 'batched') {
+            console.log('[webhook] Queueing notification for:', user.github_login, 'issue:', change.issue.id, 'action:', change.changeType)
+            await queueNotification(env.DB, {
+              userId: user.id,
+              repoOwner,
+              repoName,
+              issueId: change.issue.id,
+              issueTitle: change.issue.title,
+              changeType: change.changeType,
+              changeDetails,
+            })
+          } else {
+            // Send immediately
+            console.log('[webhook] Sending notification immediately to:', user.github_login, 'issue:', change.issue.id, 'action:', change.changeType)
+            if (env.RESEND_API_KEY) {
+              await sendEmailImmediate({
+                userId: user.id,
+                email: user.email,
+                repoOwner,
+                repoName,
+                issueId: change.issue.id,
+                issueTitle: change.issue.title,
+                changeType: change.changeType,
+                changeDetails,
+              }, env.RESEND_API_KEY)
+            }
+          }
         } else {
           console.log('[webhook] Skipping notification for:', user.github_login, 'notifyIssues:', notifyIssues, 'shouldNotify:', shouldNotify)
         }

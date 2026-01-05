@@ -72,6 +72,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       })
     }
 
+    if (key === 'notification_mode' && !['immediate', 'batched'].includes(value)) {
+      return new Response(JSON.stringify({ error: 'notification_mode must be "immediate" or "batched"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // Upsert the setting
     await env.DB.prepare(`
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)

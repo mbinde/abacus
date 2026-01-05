@@ -13,6 +13,7 @@ interface User {
 
 interface Settings {
   registration_mode?: 'open' | 'closed'
+  notification_mode?: 'immediate' | 'batched'
 }
 
 interface RepoWebhook {
@@ -126,16 +127,16 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }
 
-  async function handleRegistrationModeChange(mode: 'open' | 'closed') {
+  async function handleSettingChange(key: string, value: string) {
     setError(null)
     try {
       const res = await fetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ key: 'registration_mode', value: mode }),
+        body: JSON.stringify({ key, value }),
       })
       if (res.ok) {
-        setSettings(prev => ({ ...prev, registration_mode: mode }))
+        setSettings(prev => ({ ...prev, [key]: value }))
       } else {
         const data = await res.json() as { error?: string }
         setError(data.error || 'Failed to update setting')
@@ -199,16 +200,27 @@ export default function AdminPanel({ onBack }: Props) {
 
       <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
         <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Settings</h3>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
           <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
             <span>Registration:</span>
             <select
               value={settings.registration_mode || 'open'}
-              onChange={(e) => handleRegistrationModeChange(e.target.value as 'open' | 'closed')}
+              onChange={(e) => handleSettingChange('registration_mode', e.target.value)}
               style={{ padding: '0.25rem' }}
             >
               <option value="open">Open (anyone can sign up)</option>
               <option value="closed">Closed (existing users only)</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Notifications:</span>
+            <select
+              value={settings.notification_mode || 'immediate'}
+              onChange={(e) => handleSettingChange('notification_mode', e.target.value)}
+              style={{ padding: '0.25rem' }}
+            >
+              <option value="immediate">Send immediately</option>
+              <option value="batched">Batch with backoff (1-5 min)</option>
             </select>
           </label>
         </div>
