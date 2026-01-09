@@ -87,9 +87,28 @@ export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) =
   const timer = startTimer()
   const requestId = generateRequestId()
   let reqData: Partial<Issue> = {}
+  let baseState: BaseState | undefined
 
   try {
-    reqData = await request.json() as Partial<Issue>
+    const rawBody = await request.json() as Record<string, unknown>
+
+    // Support both old format (direct updates) and new format (updates + baseState)
+    if (rawBody.updates && typeof rawBody.updates === 'object') {
+      // New format: { updates: {...}, baseState?: {...} }
+      reqData = rawBody.updates as Partial<Issue>
+      if (rawBody.baseState && typeof rawBody.baseState === 'object') {
+        const bs = rawBody.baseState as { issue?: unknown; fetchedAt?: string }
+        if (bs.issue && bs.fetchedAt) {
+          baseState = {
+            issue: normalizeIssue(bs.issue as Record<string, unknown>),
+            fetchedAt: bs.fetchedAt
+          }
+        }
+      }
+    } else {
+      // Old format: direct updates (backward compatible)
+      reqData = rawBody as Partial<Issue>
+    }
 
     // Check if using JSONL or markdown format
     const formatCheck = await fetch(
@@ -104,8 +123,37 @@ export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) =
     )
 
     if (formatCheck.ok) {
-      // JSONL format - use merge-on-conflict
-      const result = await updateIssueWithMerge(user.githubToken, owner, repo, issueId, reqData)
+      // JSONL format - use three-way merge
+      const result = await updateIssueWithMerge(user.githubToken, owner, repo, issueId, reqData, baseState)
+
+      // Handle merge conflict - return 409 with conflict details
+      if (!result.success && result.mergeResult?.status === 'conflict') {
+        await logAction(env.DB ?? null, {
+          userId: user.id,
+          userLogin: user.github_login,
+          action: 'update_issue',
+          repoOwner: owner,
+          repoName: repo,
+          issueId,
+          requestPayload: reqData,
+          success: false,
+          errorMessage: result.error,
+          retryCount: result.retryCount,
+          conflictDetected: true,
+          durationMs: timer(),
+          requestId,
+        })
+        return new Response(JSON.stringify({
+          success: false,
+          error: result.error,
+          conflict: true,
+          mergeResult: result.mergeResult
+        }), {
+          status: 409,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       if (!result.success) {
         const status = result.notFound ? 404 : 500
         await logAction(env.DB ?? null, {
@@ -143,8 +191,17 @@ export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) =
         durationMs: timer(),
         requestId,
       })
+
+      // Return success with merge result info
+      return new Response(JSON.stringify({
+        success: true,
+        mergeResult: result.mergeResult
+      }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
     } else {
-      // Markdown format - use merge-on-conflict for individual file
+      // Markdown format - no three-way merge support (simpler format)
       const result = await updateMarkdownIssueWithMerge(user.githubToken, owner, repo, issueId, reqData)
       if (!result.success) {
         const status = result.notFound ? 404 : 500
@@ -183,12 +240,12 @@ export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) =
         durationMs: timer(),
         requestId,
       })
-    }
 
-    return new Response(JSON.stringify({ success: true }), {
-      status: 200,
-      headers: { 'Content-Type': 'application/json' },
-    })
+      return new Response(JSON.stringify({ success: true }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
   } catch (err) {
     console.error('Error updating issue:', err)
     await logAction(env.DB ?? null, {
@@ -217,17 +274,162 @@ interface UpdateResult {
   notFound?: boolean
   retryCount?: number
   conflictDetected?: boolean
+  mergeResult?: MergeResult
 }
 
-// Update issue in JSONL with merge-on-conflict and retry
+// Three-way merge types
+type EditableField = 'title' | 'description' | 'status' | 'priority' | 'issue_type' | 'assignee'
+
+const EDITABLE_FIELDS: EditableField[] = [
+  'title', 'description', 'status', 'priority', 'issue_type', 'assignee'
+]
+
+interface FieldConflict {
+  field: EditableField
+  baseValue: unknown
+  localValue: unknown
+  remoteValue: unknown
+  remoteUpdatedAt: string
+}
+
+interface MergeResult {
+  status: 'success' | 'auto_merged' | 'conflict'
+  mergedIssue?: Issue
+  autoMergedFields?: EditableField[]
+  conflicts?: FieldConflict[]
+  remoteIssue?: Issue
+}
+
+interface BaseState {
+  issue: Issue
+  fetchedAt: string
+}
+
+// Deep equality check for field values
+function isEqual(a: unknown, b: unknown): boolean {
+  if (a === b) return true
+  // Treat undefined and empty string as equivalent
+  if ((a === undefined || a === '') && (b === undefined || b === '')) return true
+  return JSON.stringify(a) === JSON.stringify(b)
+}
+
+/**
+ * Performs three-way merge following beads' updated_at tiebreaker strategy.
+ *
+ * Algorithm:
+ * 1. For each editable field, compare base vs local and base vs remote
+ * 2. If only local changed: use local value
+ * 3. If only remote changed: use remote value (auto-merge)
+ * 4. If both changed to same value: no conflict, use that value
+ * 5. If both changed to different values: TRUE CONFLICT
+ */
+// Helper to set a field on Issue (type-safe approach)
+function setIssueField(issue: Issue, field: EditableField, value: unknown): void {
+  switch (field) {
+    case 'title': issue.title = value as string; break
+    case 'description': issue.description = value as string | undefined; break
+    case 'status': issue.status = value as Issue['status']; break
+    case 'priority': issue.priority = value as number; break
+    case 'issue_type': issue.issue_type = value as Issue['issue_type']; break
+    case 'assignee': issue.assignee = value as string | undefined; break
+  }
+}
+
+function performThreeWayMerge(
+  baseIssue: Issue | undefined,
+  localUpdates: Partial<Issue>,
+  remoteIssue: Issue
+): MergeResult {
+  // No base state: fall back to last-write-wins (apply all local updates)
+  if (!baseIssue) {
+    const mergedIssue: Issue = { ...remoteIssue }
+    for (const field of EDITABLE_FIELDS) {
+      if (localUpdates[field] !== undefined) {
+        setIssueField(mergedIssue, field, localUpdates[field])
+      }
+    }
+    return {
+      status: 'success',
+      mergedIssue
+    }
+  }
+
+  const conflicts: FieldConflict[] = []
+  const autoMergedFields: EditableField[] = []
+  const mergedIssue: Issue = { ...remoteIssue }
+
+  for (const field of EDITABLE_FIELDS) {
+    const baseValue = baseIssue[field]
+    const localValue = localUpdates[field]
+    const remoteValue = remoteIssue[field]
+
+    // User didn't change this field (undefined means not included in update)
+    if (localValue === undefined) {
+      // Keep remote value (already in mergedIssue)
+      continue
+    }
+
+    const remoteChanged = !isEqual(baseValue, remoteValue)
+    const localChanged = !isEqual(baseValue, localValue)
+
+    if (!remoteChanged) {
+      // Remote unchanged from base, apply local change
+      setIssueField(mergedIssue, field, localValue)
+    } else if (!localChanged) {
+      // Local unchanged from base, keep remote (auto-merge)
+      // mergedIssue already has remote value
+      autoMergedFields.push(field)
+    } else if (isEqual(localValue, remoteValue)) {
+      // Both changed to same value - no conflict
+      setIssueField(mergedIssue, field, localValue)
+    } else {
+      // TRUE CONFLICT: both changed to different values
+      conflicts.push({
+        field,
+        baseValue,
+        localValue,
+        remoteValue,
+        remoteUpdatedAt: remoteIssue.updated_at || ''
+      })
+    }
+  }
+
+  if (conflicts.length > 0) {
+    return {
+      status: 'conflict',
+      conflicts,
+      remoteIssue,
+      mergedIssue, // Partial merge (non-conflicting fields merged)
+      autoMergedFields
+    }
+  }
+
+  if (autoMergedFields.length > 0) {
+    return {
+      status: 'auto_merged',
+      mergedIssue,
+      autoMergedFields,
+      remoteIssue
+    }
+  }
+
+  return {
+    status: 'success',
+    mergedIssue
+  }
+}
+
+// Update issue in JSONL with three-way merge and retry
 async function updateIssueWithMerge(
   token: string,
   owner: string,
   repo: string,
   issueId: string,
-  updates: Partial<Issue>
+  updates: Partial<Issue>,
+  baseState?: BaseState
 ): Promise<UpdateResult> {
   let conflictDetected = false
+  let lastMergeResult: MergeResult | undefined
 
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // Fetch current state
@@ -259,25 +461,42 @@ async function updateIssueWithMerge(
       } catch {}
     }
 
-    // Find and update the issue
-    const existing = issueMap.get(issueId)
-    if (!existing) {
+    // Find the remote issue
+    const remoteIssue = issueMap.get(issueId)
+    if (!remoteIssue) {
       return { success: false, error: 'Issue not found', notFound: true, retryCount: attempt }
     }
 
+    // Perform three-way merge
+    const mergeResult = performThreeWayMerge(
+      baseState?.issue,
+      updates,
+      remoteIssue
+    )
+    lastMergeResult = mergeResult
+
+    // If true conflicts detected, return immediately for user resolution
+    if (mergeResult.status === 'conflict') {
+      return {
+        success: false,
+        error: 'Merge conflict detected - manual resolution required',
+        conflictDetected: true,
+        retryCount: attempt,
+        mergeResult
+      }
+    }
+
+    // Apply merged issue (either success or auto_merged)
     const updated: Issue = {
-      ...existing,
-      title: updates.title ?? existing.title,
-      description: updates.description ?? existing.description,
-      status: updates.status ?? existing.status,
-      priority: updates.priority ?? existing.priority,
-      issue_type: updates.issue_type ?? existing.issue_type,
-      assignee: updates.assignee !== undefined ? updates.assignee : existing.assignee,
+      ...mergeResult.mergedIssue!,
       updated_at: new Date().toISOString(),
     }
+
+    // Handle closed_at
     if (updated.status === 'closed' && !updated.closed_at) {
       updated.closed_at = new Date().toISOString()
     }
+
     issueMap.set(issueId, updated)
 
     // Serialize back to JSONL
@@ -305,14 +524,15 @@ async function updateIssueWithMerge(
     )
 
     if (writeRes.ok) {
-      return { success: true, retryCount: attempt, conflictDetected }
+      return { success: true, retryCount: attempt, conflictDetected, mergeResult: lastMergeResult }
     }
 
     // Check if it's a conflict (409) or SHA mismatch (422)
     const status = writeRes.status
     if (status === 409 || status === 422) {
       conflictDetected = true
-      // Conflict - retry with exponential backoff
+      // SHA conflict - retry with exponential backoff (file changed by someone else)
+      // Note: This is different from merge conflict - this means GitHub rejected the write
       if (attempt < MAX_RETRIES) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt)
         await new Promise(resolve => setTimeout(resolve, delay))
@@ -329,6 +549,7 @@ async function updateIssueWithMerge(
         : errData.message || 'Failed to save issue',
       retryCount: attempt,
       conflictDetected,
+      mergeResult: lastMergeResult
     }
   }
 
@@ -337,6 +558,7 @@ async function updateIssueWithMerge(
     error: `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`,
     retryCount: MAX_RETRIES,
     conflictDetected,
+    mergeResult: lastMergeResult
   }
 }
 
