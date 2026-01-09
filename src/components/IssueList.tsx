@@ -24,6 +24,7 @@ interface BulkUpdate {
 interface Props {
   issues: Issue[]
   starredIds: Set<string>
+  repoKey?: string
   onEdit: (issue: Issue) => void
   onDelete: (id: string) => void
   onToggleStar: (issueId: string, starred: boolean) => void
@@ -38,13 +39,18 @@ type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tre
 type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'assignee' | 'updated'
 type SortDir = 'asc' | 'desc'
 
-export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew, readOnly, showTreeView = false, showBoardView = true }: Props) {
+// Helper to get storage key for a setting, optionally per-repo
+function getStorageKey(setting: string, repoKey?: string): string {
+  if (repoKey) {
+    return `abacus:repo:${repoKey}:${setting}`
+  }
+  return `abacus:${setting}`
+}
+
+export default function IssueList({ issues, starredIds, repoKey, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew, readOnly, showTreeView = false, showBoardView = true }: Props) {
   // Disable bulk updates in read-only mode
   const effectiveBulkUpdate = readOnly ? undefined : onBulkUpdate
-  const [filter, setFilter] = useState<StatusFilter>(() => {
-    const saved = localStorage.getItem('abacus:statusFilter')
-    return (saved as StatusFilter) || 'open'
-  })
+  const [filter, setFilter] = useState<StatusFilter>('open')
   const [sortKey, setSortKey] = useState<SortKey>('priority')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
   const [searchQuery, setSearchQuery] = useState('')
@@ -55,18 +61,44 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   const searchInputRef = useRef<HTMLInputElement>(null)
   const tableRef = useRef<HTMLTableSectionElement>(null)
 
+  // Load saved preferences when repoKey changes
+  useEffect(() => {
+    const savedFilter = localStorage.getItem(getStorageKey('statusFilter', repoKey))
+    if (savedFilter) {
+      setFilter(savedFilter as StatusFilter)
+    } else {
+      setFilter('open')
+    }
+
+    const savedSortKey = localStorage.getItem(getStorageKey('sortKey', repoKey))
+    if (savedSortKey) {
+      setSortKey(savedSortKey as SortKey)
+    } else {
+      setSortKey('priority')
+    }
+
+    const savedSortDir = localStorage.getItem(getStorageKey('sortDir', repoKey))
+    if (savedSortDir) {
+      setSortDir(savedSortDir as SortDir)
+    } else {
+      setSortDir('asc')
+    }
+  }, [repoKey])
+
   const handleFilterChange = (newFilter: StatusFilter) => {
     setFilter(newFilter)
-    localStorage.setItem('abacus:statusFilter', newFilter)
+    localStorage.setItem(getStorageKey('statusFilter', repoKey), newFilter)
   }
 
   const handleSort = (key: SortKey) => {
+    let newDir: SortDir = 'asc'
     if (sortKey === key) {
-      setSortDir(sortDir === 'asc' ? 'desc' : 'asc')
-    } else {
-      setSortKey(key)
-      setSortDir('asc')
+      newDir = sortDir === 'asc' ? 'desc' : 'asc'
     }
+    setSortKey(key)
+    setSortDir(newDir)
+    localStorage.setItem(getStorageKey('sortKey', repoKey), key)
+    localStorage.setItem(getStorageKey('sortDir', repoKey), newDir)
   }
 
   if (issues.length === 0) {

@@ -52,23 +52,40 @@ export default function RepoSelector({ repos, selected, onSelect, onAdd, readOnl
   return (
     <div className="card mb-2">
       <div className="flex-between">
-        <div className="flex" style={{ alignItems: 'center' }}>
-          <label style={{ fontWeight: 600, marginRight: '0.5rem' }}>Repository:</label>
+        <div className="flex" style={{ alignItems: 'center', gap: '0.5rem' }}>
+          <label style={{ fontWeight: 600 }}>Repository:</label>
           {repos.length > 0 ? (
-            <select
-              value={selected ? `${selected.owner}/${selected.name}` : ''}
-              onChange={(e) => {
-                const repo = repos.find(r => `${r.owner}/${r.name}` === e.target.value)
-                if (repo) onSelect(repo)
-              }}
-              style={{ width: 'auto', minWidth: '200px' }}
-            >
-              {repos.map((repo) => (
-                <option key={repo.id} value={`${repo.owner}/${repo.name}`}>
-                  {repo.owner}/{repo.name}
-                </option>
-              ))}
-            </select>
+            <>
+              <select
+                value={selected ? `${selected.owner}/${selected.name}` : ''}
+                onChange={(e) => {
+                  const repo = repos.find(r => `${r.owner}/${r.name}` === e.target.value)
+                  if (repo) onSelect(repo)
+                }}
+                style={{ width: 'auto', minWidth: '200px' }}
+              >
+                {repos.map((repo) => (
+                  <option key={repo.id} value={`${repo.owner}/${repo.name}`}>
+                    {repo.owner}/{repo.name}
+                  </option>
+                ))}
+              </select>
+              {selected && (
+                <a
+                  href={`https://github.com/${selected.owner}/${selected.name}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  style={{
+                    padding: '0.4rem 0.75rem',
+                    fontSize: '0.85rem',
+                    textDecoration: 'none',
+                  }}
+                  title="Open in GitHub"
+                >
+                  Go
+                </a>
+              )}
+            </>
           ) : (
             <span style={{ color: '#888' }}>No repos added yet</span>
           )}

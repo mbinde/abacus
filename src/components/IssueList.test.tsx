@@ -200,22 +200,39 @@ describe('IssueList', () => {
       expect(screen.getByText('Closed (1)')).toBeInTheDocument()
     })
 
-    it('persists filter selection to localStorage', () => {
-      render(<IssueList {...defaultProps} issues={mixedIssues} />)
+    it('persists filter selection to localStorage (per-repo)', () => {
+      render(<IssueList {...defaultProps} issues={mixedIssues} repoKey="owner/repo" />)
 
       fireEvent.click(screen.getByText(/Closed/))
 
-      expect(localStorageMock.getItem('abacus:statusFilter')).toBe('closed')
+      expect(localStorageMock.getItem('abacus:repo:owner/repo:statusFilter')).toBe('closed')
     })
 
-    it('restores filter from localStorage', () => {
-      localStorageMock.setItem('abacus:statusFilter', 'closed')
+    it('restores filter from localStorage (per-repo)', () => {
+      localStorageMock.setItem('abacus:repo:owner/repo:statusFilter', 'closed')
 
-      render(<IssueList {...defaultProps} issues={mixedIssues} />)
+      render(<IssueList {...defaultProps} issues={mixedIssues} repoKey="owner/repo" />)
 
       // Closed filter should be active, showing only closed issue
       expect(screen.queryByText('Open Issue')).not.toBeInTheDocument()
       expect(screen.getByText('Closed Issue')).toBeInTheDocument()
+    })
+
+    it('uses different storage keys for different repos', () => {
+      localStorageMock.setItem('abacus:repo:owner/repo-a:statusFilter', 'closed')
+      localStorageMock.setItem('abacus:repo:owner/repo-b:statusFilter', 'in_progress')
+
+      const { rerender } = render(<IssueList {...defaultProps} issues={mixedIssues} repoKey="owner/repo-a" />)
+
+      // Repo A should show closed filter
+      expect(screen.queryByText('Open Issue')).not.toBeInTheDocument()
+      expect(screen.getByText('Closed Issue')).toBeInTheDocument()
+
+      rerender(<IssueList {...defaultProps} issues={mixedIssues} repoKey="owner/repo-b" />)
+
+      // Repo B should show in_progress filter
+      expect(screen.queryByText('Open Issue')).not.toBeInTheDocument()
+      expect(screen.getByText('In Progress Issue')).toBeInTheDocument()
     })
   })
 
@@ -434,6 +451,57 @@ describe('IssueList', () => {
 
       // Click to toggle to descending
       fireEvent.click(screen.getByText('Priority ▲'))
+      expect(screen.getByText('Priority ▼')).toBeInTheDocument()
+    })
+
+    it('persists sort selection to localStorage (per-repo)', () => {
+      render(<IssueList {...defaultProps} issues={sortableIssues} repoKey="owner/repo" />)
+
+      fireEvent.click(screen.getByText(/^All/))
+      fireEvent.click(screen.getByText('Title'))
+
+      expect(localStorageMock.getItem('abacus:repo:owner/repo:sortKey')).toBe('title')
+      expect(localStorageMock.getItem('abacus:repo:owner/repo:sortDir')).toBe('asc')
+
+      // Click again to toggle direction
+      fireEvent.click(screen.getByText('Title ▲'))
+      expect(localStorageMock.getItem('abacus:repo:owner/repo:sortDir')).toBe('desc')
+    })
+
+    it('restores sort from localStorage (per-repo)', () => {
+      localStorageMock.setItem('abacus:repo:owner/repo:sortKey', 'title')
+      localStorageMock.setItem('abacus:repo:owner/repo:sortDir', 'asc')
+
+      render(<IssueList {...defaultProps} issues={sortableIssues} repoKey="owner/repo" />)
+
+      fireEvent.click(screen.getByText(/^All/))
+
+      // Should show title sort indicator
+      expect(screen.getByText('Title ▲')).toBeInTheDocument()
+
+      // Issues should be sorted by title ascending
+      const rows = screen.getAllByRole('row').slice(1)
+      expect(within(rows[0]).getByText('Alpha')).toBeInTheDocument()
+      expect(within(rows[1]).getByText('Beta')).toBeInTheDocument()
+      expect(within(rows[2]).getByText('Gamma')).toBeInTheDocument()
+    })
+
+    it('uses different sort settings for different repos', () => {
+      localStorageMock.setItem('abacus:repo:owner/repo-a:sortKey', 'title')
+      localStorageMock.setItem('abacus:repo:owner/repo-a:sortDir', 'asc')
+      localStorageMock.setItem('abacus:repo:owner/repo-b:sortKey', 'priority')
+      localStorageMock.setItem('abacus:repo:owner/repo-b:sortDir', 'desc')
+
+      const { rerender } = render(<IssueList {...defaultProps} issues={sortableIssues} repoKey="owner/repo-a" />)
+
+      fireEvent.click(screen.getByText(/^All/))
+
+      // Repo A: sorted by title ascending
+      expect(screen.getByText('Title ▲')).toBeInTheDocument()
+
+      rerender(<IssueList {...defaultProps} issues={sortableIssues} repoKey="owner/repo-b" />)
+
+      // Repo B: sorted by priority descending
       expect(screen.getByText('Priority ▼')).toBeInTheDocument()
     })
   })

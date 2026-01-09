@@ -679,6 +679,7 @@ export default function App() {
             <IssueList
               issues={issues}
               starredIds={starredIds}
+              repoKey={selectedRepo ? `${selectedRepo.owner}/${selectedRepo.name}` : undefined}
               onEdit={(issue) => navigate('issue', issue)}
               onDelete={handleDeleteIssue}
               onToggleStar={handleToggleStar}
