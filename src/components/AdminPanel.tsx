@@ -248,74 +248,94 @@ export default function AdminPanel({ onBack }: Props) {
       {error && <div className="error mb-2">{error}</div>}
 
       <div className="mb-3" style={{ padding: '1rem', background: '#1a1a24', borderRadius: '4px', border: '1px solid #2a2a3a' }}>
-        <h3 style={{ margin: '0 0 0.5rem 0', fontSize: '1rem' }}>Settings</h3>
-        <div style={{ display: 'flex', flexDirection: 'column', gap: '0.75rem' }}>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Registration:</span>
-            <select
-              value={settings.registration_mode || 'open'}
-              onChange={(e) => handleSettingChange('registration_mode', e.target.value)}
-              style={{ padding: '0.25rem' }}
-            >
-              <option value="open">Open (anyone can sign up)</option>
-              <option value="closed">Closed (existing users only)</option>
-            </select>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Notifications:</span>
-            <select
-              value={settings.notification_mode || 'immediate'}
-              onChange={(e) => handleSettingChange('notification_mode', e.target.value)}
-              style={{ padding: '0.25rem' }}
-            >
-              <option value="immediate">Send immediately</option>
-              <option value="batched">Batch with backoff (1-5 min)</option>
-            </select>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Anonymous Access:</span>
-            <select
-              value={settings.anonymous_access || 'disabled'}
-              onChange={(e) => handleSettingChange('anonymous_access', e.target.value)}
-              style={{ padding: '0.25rem' }}
-            >
-              <option value="disabled">Disabled (login required)</option>
-              <option value="enabled">Enabled (browse steveyegge/beads without login)</option>
-            </select>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Bulk Updates:</span>
-            <select
-              value={settings.bulk_updates || 'enabled'}
-              onChange={(e) => handleSettingChange('bulk_updates', e.target.value)}
-              style={{ padding: '0.25rem' }}
-            >
-              <option value="enabled">Enabled</option>
-              <option value="disabled">Disabled</option>
-            </select>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Tree View:</span>
-            <select
-              value={settings.view_tree || 'disabled'}
-              onChange={(e) => handleSettingChange('view_tree', e.target.value)}
-              style={{ padding: '0.25rem' }}
-            >
-              <option value="disabled">Hidden</option>
-              <option value="enabled">Visible</option>
-            </select>
-          </label>
-          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
-            <span>Board View:</span>
-            <select
-              value={settings.view_board || 'enabled'}
-              onChange={(e) => handleSettingChange('view_board', e.target.value)}
-              style={{ padding: '0.25rem' }}
-            >
-              <option value="enabled">Visible</option>
-              <option value="disabled">Hidden</option>
-            </select>
-          </label>
+        <h3 style={{ margin: '0 0 1rem 0', fontSize: '1rem' }}>Settings</h3>
+        <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))', gap: '1.5rem' }}>
+          {/* Access & Registration */}
+          <div>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Access</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Registration</span>
+                <select
+                  value={settings.registration_mode || 'open'}
+                  onChange={(e) => handleSettingChange('registration_mode', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="open">Open</option>
+                  <option value="closed">Closed</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Anonymous browsing</span>
+                <select
+                  value={settings.anonymous_access || 'disabled'}
+                  onChange={(e) => handleSettingChange('anonymous_access', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="disabled">Disabled</option>
+                  <option value="enabled">Enabled</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {/* Features */}
+          <div>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Features</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Bulk updates</span>
+                <select
+                  value={settings.bulk_updates || 'enabled'}
+                  onChange={(e) => handleSettingChange('bulk_updates', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="enabled">Enabled</option>
+                  <option value="disabled">Disabled</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Notifications</span>
+                <select
+                  value={settings.notification_mode || 'immediate'}
+                  onChange={(e) => handleSettingChange('notification_mode', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="immediate">Immediate</option>
+                  <option value="batched">Batched</option>
+                </select>
+              </label>
+            </div>
+          </div>
+
+          {/* Views */}
+          <div>
+            <h4 style={{ margin: '0 0 0.75rem 0', fontSize: '0.875rem', color: '#888', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Views</h4>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Tree view</span>
+                <select
+                  value={settings.view_tree || 'disabled'}
+                  onChange={(e) => handleSettingChange('view_tree', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="disabled">Hidden</option>
+                  <option value="enabled">Visible</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Board view</span>
+                <select
+                  value={settings.view_board || 'enabled'}
+                  onChange={(e) => handleSettingChange('view_board', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="enabled">Visible</option>
+                  <option value="disabled">Hidden</option>
+                </select>
+              </label>
+            </div>
+          </div>
         </div>
       </div>
 
