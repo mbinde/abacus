@@ -11,6 +11,7 @@ import ExecutorSettings from './components/ExecutorSettings'
 import LoadingSkeleton from './components/LoadingSkeleton'
 import ActivityFeed from './components/ActivityFeed'
 import Dashboard from './components/Dashboard'
+import ConflictResolver from './components/ConflictResolver'
 import { apiFetch } from './lib/api'
 
 interface Repo {
@@ -45,6 +46,35 @@ interface Issue {
   comments?: Comment[]
 }
 
+// Three-way merge types (matching backend)
+type EditableField = 'title' | 'description' | 'status' | 'priority' | 'issue_type' | 'assignee'
+
+interface FieldConflict {
+  field: EditableField
+  baseValue: unknown
+  localValue: unknown
+  remoteValue: unknown
+  remoteUpdatedAt: string
+}
+
+interface MergeResult {
+  status: 'success' | 'auto_merged' | 'conflict'
+  mergedIssue?: Issue
+  autoMergedFields?: EditableField[]
+  conflicts?: FieldConflict[]
+  remoteIssue?: Issue
+}
+
+interface BaseState {
+  issue: Issue
+  fetchedAt: string
+}
+
+interface ConflictState {
+  mergeResult: MergeResult
+  localUpdates: Partial<Issue>
+}
+
 interface User {
   id: number
   login: string
@@ -69,54 +99,110 @@ type View = 'list' | 'create' | 'edit' | 'issue' | 'admin' | 'profile' | 'execut
 
 interface AppState {
   view: View
+  owner?: string
+  repo?: string
   issueId?: string
 }
 
+// URL Structure:
+// /                                    → Root (redirect to last repo or show picker)
+// /:owner/:repo                        → Issue list for repo
+// /:owner/:repo/issues                 → Same as above (alias)
+// /:owner/:repo/issues/:issueId        → View single issue
+// /:owner/:repo/issues/:issueId/edit   → Edit issue
+// /:owner/:repo/new                    → Create new issue
+// /:owner/:repo/activity               → Activity feed for repo
+// /:owner/:repo/dashboard              → Dashboard for repo
+// /:owner/:repo/executors              → Executor settings for repo
+// /admin                               → Admin panel (global)
+// /profile                             → User profile (global)
+
 function parseUrlState(): AppState {
   const path = window.location.pathname
+
+  // Global routes (no repo context)
   if (path === '/admin') {
     return { view: 'admin' }
   }
   if (path === '/profile') {
     return { view: 'profile' }
   }
-  if (path === '/executors') {
-    return { view: 'executors' }
+
+  // Root path - no repo selected yet
+  if (path === '/') {
+    return { view: 'list' }
   }
-  if (path === '/activity') {
-    return { view: 'activity' }
+
+  // Repo-scoped routes: /:owner/:repo/...
+  const repoMatch = path.match(/^\/([^/]+)\/([^/]+)(?:\/(.*))?$/)
+  if (repoMatch) {
+    const [, owner, repo, rest] = repoMatch
+
+    // /:owner/:repo or /:owner/:repo/issues
+    if (!rest || rest === '' || rest === 'issues') {
+      return { view: 'list', owner, repo }
+    }
+
+    // /:owner/:repo/new
+    if (rest === 'new') {
+      return { view: 'create', owner, repo }
+    }
+
+    // /:owner/:repo/activity
+    if (rest === 'activity') {
+      return { view: 'activity', owner, repo }
+    }
+
+    // /:owner/:repo/dashboard
+    if (rest === 'dashboard') {
+      return { view: 'dashboard', owner, repo }
+    }
+
+    // /:owner/:repo/executors
+    if (rest === 'executors') {
+      return { view: 'executors', owner, repo }
+    }
+
+    // Issue routes: issues/:id or issues/:id/edit
+    const issueMatch = rest.match(/^issues\/([^/]+)(\/edit)?$/)
+    if (issueMatch) {
+      const issueId = issueMatch[1]
+      const isEdit = !!issueMatch[2]
+      return { view: isEdit ? 'edit' : 'issue', owner, repo, issueId }
+    }
   }
-  if (path === '/dashboard') {
-    return { view: 'dashboard' }
-  }
-  if (path === '/new') {
-    return { view: 'create' }
-  }
-  const editMatch = path.match(/^\/edit\/(.+)$/)
-  if (editMatch) {
-    return { view: 'edit', issueId: editMatch[1] }
-  }
+
+  // Fallback - show list (will show repo picker if no repo)
   return { view: 'list' }
 }
 
 function buildUrl(state: AppState): string {
+  // Global routes
+  if (state.view === 'admin') return '/admin'
+  if (state.view === 'profile') return '/profile'
+
+  // Repo-scoped routes need owner/repo
+  if (!state.owner || !state.repo) return '/'
+
+  const base = `/${state.owner}/${state.repo}`
+
   switch (state.view) {
-    case 'admin':
-      return '/admin'
-    case 'profile':
-      return '/profile'
-    case 'executors':
-      return '/executors'
-    case 'activity':
-      return '/activity'
-    case 'dashboard':
-      return '/dashboard'
+    case 'list':
+      return base
     case 'create':
-      return '/new'
+      return `${base}/new`
+    case 'activity':
+      return `${base}/activity`
+    case 'dashboard':
+      return `${base}/dashboard`
+    case 'executors':
+      return `${base}/executors`
+    case 'issue':
+      return `${base}/issues/${state.issueId}`
     case 'edit':
-      return `/edit/${state.issueId}`
+      return `${base}/issues/${state.issueId}/edit`
     default:
-      return '/'
+      return base
   }
 }
 
@@ -137,12 +223,23 @@ export default function App() {
     view_tree: 'disabled',
     view_board: 'enabled',
   })
+  // Three-way merge state
+  const [editBaseState, setEditBaseState] = useState<BaseState | null>(null)
+  const [conflictState, setConflictState] = useState<ConflictState | null>(null)
+  // Pre-filled comment when converting from edit to comment
+  const [initialComment, setInitialComment] = useState<string | null>(null)
+
   const isPopState = useRef(false)
   const pendingIssueId = useRef<string | null>(null)
 
   // Navigate with history support
   const navigate = useCallback((newView: View, issue?: Issue | null) => {
-    const state: AppState = { view: newView, issueId: issue?.id }
+    const state: AppState = {
+      view: newView,
+      owner: selectedRepo?.owner,
+      repo: selectedRepo?.name,
+      issueId: issue?.id
+    }
     const url = buildUrl(state)
 
     if (!isPopState.current) {
@@ -150,9 +247,24 @@ export default function App() {
     }
     isPopState.current = false
 
+    // Capture base state when entering edit mode
+    if (newView === 'edit' && issue) {
+      setEditBaseState({
+        issue: { ...issue },
+        fetchedAt: new Date().toISOString()
+      })
+    } else if (newView !== 'edit') {
+      // Clear base state and conflict state when leaving edit mode
+      setEditBaseState(null)
+      setConflictState(null)
+    }
+
     setView(newView)
     setSelectedIssue(issue ?? null)
-  }, [])
+  }, [selectedRepo])
+
+  // Track URL state for repo syncing
+  const pendingUrlState = useRef<AppState | null>(null)
 
   // Handle browser back/forward
   useEffect(() => {
@@ -160,6 +272,17 @@ export default function App() {
       isPopState.current = true
       const state = parseUrlState()
       setView(state.view)
+
+      // Handle repo change from URL
+      if (state.owner && state.repo) {
+        const found = repos.find(r => r.owner === state.owner && r.name === state.repo)
+        if (found && found !== selectedRepo) {
+          setSelectedRepo(found)
+        } else if (!found) {
+          // Store for later - will try to add repo
+          pendingUrlState.current = state
+        }
+      }
 
       if ((state.view === 'edit' || state.view === 'issue') && state.issueId) {
         // Find issue in loaded issues, or store for later lookup
@@ -176,7 +299,7 @@ export default function App() {
 
     window.addEventListener('popstate', handlePopState)
     return () => window.removeEventListener('popstate', handlePopState)
-  }, [issues])
+  }, [issues, repos, selectedRepo])
 
   // Resolve pending issue when issues load
   useEffect(() => {
@@ -192,11 +315,13 @@ export default function App() {
   // Initialize state from URL on mount
   useEffect(() => {
     const state = parseUrlState()
-    if (state.view !== 'list') {
-      setView(state.view)
-      if (state.issueId) {
-        pendingIssueId.current = state.issueId
-      }
+    setView(state.view)
+    if (state.issueId) {
+      pendingIssueId.current = state.issueId
+    }
+    // Store URL state for repo syncing after repos load
+    if (state.owner && state.repo) {
+      pendingUrlState.current = state
     }
     // Replace current history entry with state
     window.history.replaceState(state, '', buildUrl(state))
@@ -298,18 +423,61 @@ export default function App() {
       if (res.ok) {
         const data = await res.json() as { repos: Repo[] }
         setRepos(data.repos)
+
+        // Priority 1: URL has repo - use it (or auto-add if not in list)
+        if (pendingUrlState.current?.owner && pendingUrlState.current?.repo) {
+          const urlOwner = pendingUrlState.current.owner
+          const urlRepo = pendingUrlState.current.repo
+          const found = data.repos.find(r => r.owner === urlOwner && r.name === urlRepo)
+
+          if (found) {
+            setSelectedRepo(found)
+            pendingUrlState.current = null
+            return
+          } else {
+            // Repo not in user's list - try to auto-add it
+            try {
+              const addRes = await apiFetch('/api/repos', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ owner: urlOwner, name: urlRepo }),
+              })
+              if (addRes.ok) {
+                const addData = await addRes.json() as { repo: Repo }
+                setRepos(prev => [...prev, addData.repo])
+                setSelectedRepo(addData.repo)
+                pendingUrlState.current = null
+                return
+              } else {
+                const errData = await addRes.json() as { error?: string }
+                setError(`Could not access ${urlOwner}/${urlRepo}: ${errData.error || 'Unknown error'}`)
+              }
+            } catch {
+              setError(`Could not access ${urlOwner}/${urlRepo}`)
+            }
+            pendingUrlState.current = null
+          }
+        }
+
+        // Priority 2: localStorage has saved repo
         if (data.repos.length > 0 && !selectedRepo) {
-          // Try to restore last selected repo from localStorage
           const savedRepo = localStorage.getItem('abacus:selectedRepo')
           if (savedRepo) {
             const { owner, name } = JSON.parse(savedRepo)
             const found = data.repos.find(r => r.owner === owner && r.name === name)
             if (found) {
+              // Update URL to reflect the selected repo
+              const state: AppState = { view, owner: found.owner, repo: found.name }
+              window.history.replaceState(state, '', buildUrl(state))
               setSelectedRepo(found)
               return
             }
           }
-          setSelectedRepo(data.repos[0])
+          // Fallback to first repo and update URL
+          const first = data.repos[0]
+          const state: AppState = { view, owner: first.owner, repo: first.name }
+          window.history.replaceState(state, '', buildUrl(state))
+          setSelectedRepo(first)
         }
       }
     } catch (err) {
@@ -414,6 +582,9 @@ export default function App() {
         const data = await res.json() as { repo: Repo }
         setRepos([...repos, data.repo])
         setSelectedRepo(data.repo)
+        // Update URL to reflect the new repo
+        const state: AppState = { view, owner: data.repo.owner, repo: data.repo.name }
+        window.history.pushState(state, '', buildUrl(state))
       } else {
         const data = await res.json() as { error?: string }
         throw new Error(data.error || 'Failed to add repo')
@@ -435,14 +606,21 @@ export default function App() {
         setRepos(newRepos)
         // If we removed the selected repo, select another one
         if (selectedRepo?.id === repoId) {
-          setSelectedRepo(newRepos.length > 0 ? newRepos[0] : null)
           if (newRepos.length > 0) {
+            const first = newRepos[0]
+            setSelectedRepo(first)
             localStorage.setItem('abacus:selectedRepo', JSON.stringify({
-              owner: newRepos[0].owner,
-              name: newRepos[0].name,
+              owner: first.owner,
+              name: first.name,
             }))
+            // Update URL to new repo
+            const state: AppState = { view, owner: first.owner, repo: first.name }
+            window.history.pushState(state, '', buildUrl(state))
           } else {
+            setSelectedRepo(null)
             localStorage.removeItem('abacus:selectedRepo')
+            // Navigate to root when no repos left
+            window.history.pushState({ view: 'list' }, '', '/')
           }
         }
       } else {
@@ -456,40 +634,180 @@ export default function App() {
     }
   }
 
-  async function handleSaveIssue(issue: Partial<Issue>) {
+  async function handleSaveIssue(
+    issue: Partial<Issue>,
+    backupFields?: { title?: string; description?: string }
+  ) {
     if (!selectedRepo) return
     setDataLoading(true)
     setError(null)
 
     const isNew = !issue.id
-    const url = isNew
-      ? `/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues`
-      : `/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}`
 
     try {
+      // Create backup comments FIRST (before conflict detection) if backup fields provided
+      if (backupFields && issue.id && user) {
+        const timestamp = new Date().toISOString()
+        const backupPromises: Promise<Response>[] = []
+
+        if (backupFields.title) {
+          const commentText = `── backup: my edit to title ─────────────────────
+Saved by ${user.login} in case of conflict
+${timestamp}
+
+${backupFields.title}
+───────────────────────────────────────────────────`
+          backupPromises.push(
+            fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}/comments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: commentText }),
+            })
+          )
+        }
+
+        if (backupFields.description) {
+          const commentText = `── backup: my edit to description ─────────────────────
+Saved by ${user.login} in case of conflict
+${timestamp}
+
+${backupFields.description}
+───────────────────────────────────────────────────`
+          backupPromises.push(
+            fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}/comments`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ text: commentText }),
+            })
+          )
+        }
+
+        // Wait for backup comments to be created
+        await Promise.all(backupPromises)
+      }
+
+      // Now save the issue
+      const url = isNew
+        ? `/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues`
+        : `/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}`
+
+      // Build request body: new format for updates (with baseState), old format for create
+      const requestBody = isNew
+        ? issue
+        : {
+            updates: issue,
+            baseState: editBaseState
+          }
+
       const res = await fetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(issue),
+        body: JSON.stringify(requestBody),
       })
 
+      const data = await res.json() as {
+        success?: boolean
+        error?: string
+        conflict?: boolean
+        mergeResult?: MergeResult
+      }
+
       if (res.ok) {
+        // Check for auto-merge notification
+        if (data.mergeResult?.status === 'auto_merged' && data.mergeResult.autoMergedFields?.length) {
+          // Show brief notification that some fields were auto-merged
+          console.log('Auto-merged fields:', data.mergeResult.autoMergedFields)
+        }
+
+        setEditBaseState(null)
+        setConflictState(null)
         await loadIssues()
         navigate('list')
+      } else if (res.status === 409 && data.conflict && data.mergeResult?.status === 'conflict') {
+        // True conflict - show resolution UI
+        // Note: backup comments were already created above, so user's work is safe
+        setConflictState({
+          mergeResult: data.mergeResult,
+          localUpdates: issue
+        })
       } else {
-        const data = await res.json() as { conflict?: boolean; serverVersion?: Issue; error?: string }
-        if (data.conflict && data.serverVersion) {
-          // Handle conflict - show both versions
-          setError(`Conflict detected! Someone else modified this issue. Their version: "${data.serverVersion.title}"`)
-        } else {
-          setError(data.error || 'Failed to save issue')
-        }
+        setError(data.error || 'Failed to save issue')
       }
     } catch {
       setError('Failed to save issue')
     } finally {
       setDataLoading(false)
     }
+  }
+
+  // Conflict resolution handlers
+  async function handleResolveConflict(resolutions: Record<EditableField, 'local' | 'remote'>) {
+    if (!conflictState || !selectedRepo || !selectedIssue) return
+
+    const { mergeResult } = conflictState
+
+    // Build resolved issue from mergedIssue (non-conflicting) + user's resolutions
+    const resolvedIssue: Partial<Issue> = {
+      ...mergeResult.mergedIssue,
+      id: selectedIssue.id
+    }
+
+    // Apply user's choices for conflicting fields
+    for (const conflict of mergeResult.conflicts || []) {
+      const choice = resolutions[conflict.field]
+      if (choice === 'local') {
+        (resolvedIssue as Record<string, unknown>)[conflict.field] = conflict.localValue
+      } else {
+        (resolvedIssue as Record<string, unknown>)[conflict.field] = conflict.remoteValue
+      }
+    }
+
+    // Update base state to the remote issue we just saw (for next potential conflict)
+    if (mergeResult.remoteIssue) {
+      setEditBaseState({
+        issue: mergeResult.remoteIssue as Issue,
+        fetchedAt: new Date().toISOString()
+      })
+    }
+    setConflictState(null)
+
+    // Re-save with resolved values
+    await handleSaveIssue(resolvedIssue)
+  }
+
+  function handleDiscardLocalChanges() {
+    setConflictState(null)
+    setEditBaseState(null)
+    loadIssues()
+    navigate('list')
+  }
+
+  function handleConvertToComment(commentText: string) {
+    // Navigate to issue view with pre-filled comment
+    setInitialComment(commentText)
+    setEditBaseState(null)
+    setConflictState(null)
+    if (selectedIssue) {
+      navigate('issue', selectedIssue)
+    }
+  }
+
+  // Clear initialComment when navigating away from issue view
+  useEffect(() => {
+    if (view !== 'issue' && initialComment) {
+      setInitialComment(null)
+    }
+  }, [view, initialComment])
+
+  async function handleForceLocalChanges() {
+    if (!conflictState) return
+
+    // Clear base state to trigger "no base state" path (last-write-wins)
+    setEditBaseState(null)
+    setConflictState(null)
+
+    // Re-save without base state
+    await handleSaveIssue(conflictState.localUpdates)
   }
 
   async function handleBulkUpdate(issueIds: string[], updates: { status?: string; priority?: number }) {
@@ -543,6 +861,16 @@ export default function App() {
     setRepos([])
     setSelectedRepo(null)
     setIssues([])
+    // Navigate to root on logout
+    window.history.pushState({ view: 'list' }, '', '/')
+  }
+
+  // Handle repo selection - updates both state and URL
+  function handleSelectRepo(repo: Repo) {
+    setSelectedRepo(repo)
+    // Update URL to reflect new repo selection
+    const state: AppState = { view, owner: repo.owner, repo: repo.name }
+    window.history.pushState(state, '', buildUrl(state))
   }
 
   if (loading) {
@@ -619,7 +947,7 @@ export default function App() {
         <RepoSelector
           repos={repos}
           selected={selectedRepo}
-          onSelect={setSelectedRepo}
+          onSelect={handleSelectRepo}
           onAdd={handleAddRepo}
           readOnly={!user}
         />
@@ -713,14 +1041,28 @@ export default function App() {
               currentUser={user}
               onCommentAdded={loadIssues}
               readOnly={readOnly}
+              initialComment={initialComment || undefined}
             />
           )}
 
-          {!dataLoading && (view === 'create' || view === 'edit') && (
+          {!dataLoading && (view === 'create' || view === 'edit') && !conflictState && (
             <IssueForm
               issue={selectedIssue}
               onSave={handleSaveIssue}
               onCancel={() => view === 'edit' && selectedIssue ? navigate('issue', selectedIssue) : navigate('list')}
+              onConvertToComment={view === 'edit' ? handleConvertToComment : undefined}
+            />
+          )}
+
+          {/* Conflict resolution UI */}
+          {conflictState && (
+            <ConflictResolver
+              conflicts={conflictState.mergeResult.conflicts || []}
+              autoMergedFields={conflictState.mergeResult.autoMergedFields || []}
+              onResolve={handleResolveConflict}
+              onDiscardLocal={handleDiscardLocalChanges}
+              onForceLocal={handleForceLocalChanges}
+              onCancel={() => setConflictState(null)}
             />
           )}
         </>
