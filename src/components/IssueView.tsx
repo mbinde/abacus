@@ -184,7 +184,25 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
                 @{issue.assignee}
               </span>
             )}
-            <code style={{ color: '#666', fontSize: '0.75rem' }}>{issue.id}</code>
+            <code style={{ color: '#666', fontSize: '0.75rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+              {issue.id}
+              <button
+                type="button"
+                onClick={() => navigator.clipboard.writeText(issue.id)}
+                title="Copy issue ID"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  padding: '0.125rem',
+                  cursor: 'pointer',
+                  color: '#666',
+                  fontSize: '0.7rem',
+                  lineHeight: 1,
+                }}
+              >
+                📋
+              </button>
+            </code>
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>

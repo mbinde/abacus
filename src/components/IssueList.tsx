@@ -449,7 +449,28 @@ export default function IssueList({ issues, starredIds, repoKey, onEdit, onDelet
                 />
               </td>
               <td>
-                <code style={{ fontSize: '0.875rem' }}>{issue.id}</code>
+                <code style={{ fontSize: '0.875rem', display: 'inline-flex', alignItems: 'center', gap: '0.25rem' }}>
+                  {issue.id}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation()
+                      navigator.clipboard.writeText(issue.id)
+                    }}
+                    title="Copy issue ID"
+                    style={{
+                      background: 'transparent',
+                      border: 'none',
+                      padding: '0.125rem',
+                      cursor: 'pointer',
+                      color: '#666',
+                      fontSize: '0.7rem',
+                      lineHeight: 1,
+                    }}
+                  >
+                    📋
+                  </button>
+                </code>
               </td>
               <td>
                 <TitleWithPreview
