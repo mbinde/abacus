@@ -35,7 +35,7 @@ interface Props {
 }
 
 type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tree' | 'kanban'
-type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
+type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'assignee' | 'updated'
 type SortDir = 'asc' | 'desc'
 
 export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew, readOnly, showTreeView = false, showBoardView = true }: Props) {
@@ -135,6 +135,9 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           break
         case 'priority':
           cmp = a.priority - b.priority
+          break
+        case 'assignee':
+          cmp = (a.assignee || '').localeCompare(b.assignee || '')
           break
         case 'updated':
           const aDate = a.updated_at || a.created_at
@@ -383,7 +386,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
             <SortHeader column="type" label="Type" />
             <SortHeader column="status" label="Status" />
             <SortHeader column="priority" label="Priority" />
-            <th>Assignee</th>
+            <SortHeader column="assignee" label="Assignee" />
             <SortHeader column="updated" label="Updated" />
           </tr>
         </thead>
