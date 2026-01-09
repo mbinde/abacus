@@ -2,6 +2,7 @@ import { useState, FormEvent } from 'react'
 import DispatchButton from './DispatchButton'
 import MentionText from './MentionText'
 import type { GitHubLink } from '../lib/beads'
+import { apiFetch } from '../lib/api'
 
 interface Comment {
   id: number
@@ -95,7 +96,7 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
     setNewComment('')
 
     try {
-      const res = await fetch(`/api/repos/${repoOwner}/${repoName}/issues/${issue.id}/comments`, {
+      const res = await apiFetch(`/api/repos/${repoOwner}/${repoName}/issues/${issue.id}/comments`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ text: commentText }),

@@ -560,11 +560,10 @@ function normalizeType(type: unknown): Issue['issue_type'] {
 }
 
 function generateId(prefix: string): string {
-  const chars = '0123456789abcdefghijklmnopqrstuvwxyz'
-  let hash = ''
-  for (let i = 0; i < 3; i++) {
-    hash += chars[Math.floor(Math.random() * chars.length)]
-  }
+  // Use cryptographically secure random bytes for ID generation
+  // 6 bytes = 12 hex chars = 281 trillion possibilities (vs 46,656 with 3 alphanumeric chars)
+  const bytes = crypto.getRandomValues(new Uint8Array(6))
+  const hash = Array.from(bytes).map(b => b.toString(16).padStart(2, '0')).join('')
   return `${prefix}-${hash}`
 }
 

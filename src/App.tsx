@@ -11,6 +11,7 @@ import ExecutorSettings from './components/ExecutorSettings'
 import LoadingSkeleton from './components/LoadingSkeleton'
 import ActivityFeed from './components/ActivityFeed'
 import Dashboard from './components/Dashboard'
+import { apiFetch } from './lib/api'
 
 interface Repo {
   id: number
@@ -404,7 +405,7 @@ export default function App() {
 
   async function handleAddRepo(owner: string, name: string) {
     try {
-      const res = await fetch('/api/repos', {
+      const res = await apiFetch('/api/repos', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ owner, name }),
@@ -426,7 +427,7 @@ export default function App() {
 
   async function handleRemoveRepo(repoId: number) {
     try {
-      const res = await fetch(`/api/repos/${repoId}`, {
+      const res = await apiFetch(`/api/repos/${repoId}`, {
         method: 'DELETE',
       })
       if (res.ok) {
@@ -497,7 +498,7 @@ export default function App() {
     setError(null)
 
     try {
-      const res = await fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/bulk`, {
+      const res = await apiFetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/bulk`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ issue_ids: issueIds, updates }),
@@ -520,7 +521,7 @@ export default function App() {
     if (!selectedRepo || !confirm('Delete this issue?')) return
     setDataLoading(true)
     try {
-      const res = await fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${id}`, {
+      const res = await apiFetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${id}`, {
         method: 'DELETE',
       })
       if (res.ok) {
@@ -537,7 +538,7 @@ export default function App() {
   }
 
   async function handleLogout() {
-    await fetch('/api/auth/logout', { method: 'POST' })
+    await apiFetch('/api/auth/logout', { method: 'POST' })
     setUser(null)
     setRepos([])
     setSelectedRepo(null)

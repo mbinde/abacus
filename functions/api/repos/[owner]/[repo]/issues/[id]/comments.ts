@@ -2,6 +2,7 @@
 
 import type { UserContext, AnonymousContext } from '../../../../../_middleware'
 import { logAction, startTimer, generateRequestId } from '../../../../../../lib/action-log'
+import { validateCommentText, validateIssueId, validateRepoOwner, validateRepoName } from '../../../../../../lib/validation'
 
 // Helper to check if user is anonymous
 function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
@@ -66,6 +67,29 @@ export const onRequestPost: PagesFunction<{ DB?: D1Database }> = async (context)
     })
   }
 
+  // Validate path parameters
+  const ownerValidation = validateRepoOwner(owner)
+  if (!ownerValidation.valid) {
+    return new Response(JSON.stringify({ error: ownerValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const repoValidation = validateRepoName(repo)
+  if (!repoValidation.valid) {
+    return new Response(JSON.stringify({ error: repoValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const issueIdValidation = validateIssueId(issueId)
+  if (!issueIdValidation.valid) {
+    return new Response(JSON.stringify({ error: issueIdValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   const timer = startTimer()
   const requestId = generateRequestId()
   let commentText = ''
@@ -74,8 +98,10 @@ export const onRequestPost: PagesFunction<{ DB?: D1Database }> = async (context)
     const body = await request.json() as { text: string }
     commentText = body.text?.trim() || ''
 
-    if (!commentText) {
-      return new Response(JSON.stringify({ error: 'Comment text is required' }), {
+    // Validate comment text (required and length check)
+    const textValidation = validateCommentText(commentText)
+    if (!textValidation.valid) {
+      return new Response(JSON.stringify({ error: textValidation.error }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })

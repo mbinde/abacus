@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 interface Executor {
   name: string
@@ -52,7 +53,7 @@ export default function DispatchButton({ repoOwner, repoName, issueId, onDispatc
     setSuccess(null)
 
     try {
-      const res = await fetch(
+      const res = await apiFetch(
         `/api/repos/${repoOwner}/${repoName}/executors/${selectedExecutor}/dispatch`,
         {
           method: 'POST',

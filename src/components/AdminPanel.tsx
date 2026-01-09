@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react'
+import { apiFetch } from '../lib/api'
 
 interface User {
   id: number
@@ -171,7 +172,7 @@ export default function AdminPanel({ onBack }: Props) {
     if (!confirm('Revoke webhook? This will clear the secret and owner.')) return
     setError(null)
     try {
-      const res = await fetch('/api/admin/webhooks', {
+      const res = await apiFetch('/api/admin/webhooks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_id: repoId, action: 'revoke' }),
@@ -190,7 +191,7 @@ export default function AdminPanel({ onBack }: Props) {
   async function handleTransferWebhook(repoId: number, newOwnerId: number) {
     setError(null)
     try {
-      const res = await fetch('/api/admin/webhooks', {
+      const res = await apiFetch('/api/admin/webhooks', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ repo_id: repoId, action: 'transfer', new_owner_id: newOwnerId }),
@@ -209,7 +210,7 @@ export default function AdminPanel({ onBack }: Props) {
   async function handleSettingChange(key: string, value: string) {
     setError(null)
     try {
-      const res = await fetch('/api/admin/settings', {
+      const res = await apiFetch('/api/admin/settings', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ key, value }),
@@ -228,7 +229,7 @@ export default function AdminPanel({ onBack }: Props) {
   async function handleRoleChange(userId: number, newRole: 'admin' | 'premium' | 'user' | 'guest') {
     setError(null)
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, {
+      const res = await apiFetch(`/api/admin/users/${userId}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ role: newRole }),
@@ -251,7 +252,7 @@ export default function AdminPanel({ onBack }: Props) {
 
     setError(null)
     try {
-      const res = await fetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/admin/users/${userId}`, { method: 'DELETE' })
       if (res.ok) {
         await loadUsers()
       } else {

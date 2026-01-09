@@ -7,38 +7,84 @@ interface ModalProps {
 const POLL_SCRIPT = `#!/bin/bash
 # poll-executor.sh - Poll for dispatched issues and run Claude Code
 #
-# Usage: ./poll-executor.sh <label>
-#   e.g., ./poll-executor.sh exec:my-mac
+# Usage: ./poll-executor.sh <label> [--repo <path>]
+#
+# Options:
+#   --repo <path>  Path to the beads-enabled repo (default: current directory)
+#
+# Examples:
+#   ./poll-executor.sh exec:my-mac
+#   ./poll-executor.sh exec:my-mac --repo ~/projects/myrepo
 #
 # Prerequisites:
 #   - bd CLI installed and configured
 #   - claude CLI installed (Claude Code)
-#   - Run from within a beads-enabled git repo
 
 set -euo pipefail
 
-if [ $# -eq 0 ]; then
-  echo "Usage: $0 <label>"
+show_help() {
+  echo "Usage: $0 <label> [--repo <path>]"
   echo ""
   echo "Poll for beads issues with the specified label and dispatch them to Claude Code."
   echo ""
-  echo "Example:"
+  echo "Options:"
+  echo "  --repo <path>  Path to the beads-enabled repo (default: current directory)"
+  echo ""
+  echo "Examples:"
   echo "  $0 exec:my-mac"
+  echo "  $0 exec:my-mac --repo ~/projects/myrepo"
   echo ""
   echo "Prerequisites:"
   echo "  - bd CLI installed and configured"
   echo "  - claude CLI installed (Claude Code)"
-  echo "  - Run from within a beads-enabled git repo"
+}
+
+# Parse arguments
+LABEL=""
+REPO_PATH="."
+
+while [[ $# -gt 0 ]]; do
+  case $1 in
+    --repo)
+      REPO_PATH="$2"
+      shift 2
+      ;;
+    --help|-h)
+      show_help
+      exit 0
+      ;;
+    -*)
+      echo "Unknown option: $1"
+      show_help
+      exit 1
+      ;;
+    *)
+      if [ -z "$LABEL" ]; then
+        LABEL="$1"
+      else
+        echo "Unexpected argument: $1"
+        show_help
+        exit 1
+      fi
+      shift
+      ;;
+  esac
+done
+
+if [ -z "$LABEL" ]; then
+  show_help
   exit 1
 fi
 
-LABEL="$1"
 POLL_INTERVAL=30
 
 echo "Polling for issues with label: $LABEL"
+echo "Repo: $REPO_PATH"
 echo "Poll interval: \${POLL_INTERVAL}s"
 echo "Press Ctrl+C to stop"
 echo ""
+
+cd "$REPO_PATH"
 
 while true; do
   # Find open issues with the executor label
@@ -117,6 +163,45 @@ When done, run: bd close \${issue_id}\`;
 
 console.log('Webhook server running on :3000');`
 
+function CopyableInline({ code }: { code: string }) {
+  const [copied, setCopied] = useState(false)
+
+  const handleCopy = async () => {
+    await navigator.clipboard.writeText(code)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
+  }
+
+  return (
+    <div
+      style={{
+        display: 'flex',
+        justifyContent: 'space-between',
+        alignItems: 'center',
+        background: '#252525',
+        borderRadius: '4px',
+        padding: '0.5rem 0.75rem',
+      }}
+    >
+      <code style={{ fontSize: '0.85rem' }}>{code}</code>
+      <button
+        onClick={handleCopy}
+        style={{
+          background: copied ? '#2d5a2d' : '#444',
+          padding: '0.25rem 0.5rem',
+          fontSize: '0.75rem',
+          border: 'none',
+          cursor: 'pointer',
+          marginLeft: '0.5rem',
+          flexShrink: 0,
+        }}
+      >
+        {copied ? 'Copied!' : 'Copy'}
+      </button>
+    </div>
+  )
+}
+
 function CopyableCode({ code, filename }: { code: string; filename: string }) {
   const [copied, setCopied] = useState(false)
 
@@ -127,15 +212,13 @@ function CopyableCode({ code, filename }: { code: string; filename: string }) {
   }
 
   return (
-    <div style={{ position: 'relative' }}>
+    <div style={{ position: 'relative', background: '#252525', borderRadius: '4px' }}>
       <div
         style={{
           display: 'flex',
           justifyContent: 'space-between',
           alignItems: 'center',
-          background: '#252525',
           padding: '0.5rem 1rem',
-          borderRadius: '4px 4px 0 0',
           borderBottom: '1px solid #333',
         }}
       >
@@ -155,13 +238,12 @@ function CopyableCode({ code, filename }: { code: string; filename: string }) {
       </div>
       <pre
         style={{
-          background: '#1a1a1a',
           padding: '1rem',
-          borderRadius: '0 0 4px 4px',
           overflow: 'auto',
           fontSize: '0.8rem',
           lineHeight: '1.4',
           margin: 0,
+          background: 'transparent',
         }}
       >
         {code}
@@ -176,13 +258,14 @@ export function LabelPollInlineHelp({ label }: { label?: string }) {
     <div style={{ background: '#1a1a1a', padding: '1rem', borderRadius: '4px' }}>
       <h4 style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>How Label Poll Works</h4>
       <ol style={{ paddingLeft: '1.25rem', color: '#aaa', fontSize: '0.8rem', marginBottom: '1rem' }}>
-        <li>When you click "Dispatch" on an issue, this label is added to it</li>
+        <li>On an issue, select this executor and click "Dispatch" — the label is added to the issue</li>
         <li>Your agent polls with <code>bd list --label={label || 'LABEL'}</code></li>
         <li>Agent picks up the issue, removes the label, and processes it</li>
       </ol>
       <h4 style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>Polling Script</h4>
-      <p style={{ marginBottom: '0.5rem', color: '#888', fontSize: '0.8rem' }}>
-        Save as <code>poll-executor.sh</code>, run <code>chmod +x</code>, then execute from your repo:
+      <CopyableInline code={`./poll-executor.sh ${label || 'exec:LABEL'}`} />
+      <p style={{ marginBottom: '0.5rem', marginTop: '0.5rem', color: '#888', fontSize: '0.8rem' }}>
+        Save anywhere, run <code>chmod +x</code>, then execute (add <code>--repo path</code> if not in repo):
       </p>
       <CopyableCode code={POLL_SCRIPT} filename="poll-executor.sh" />
     </div>
@@ -194,7 +277,7 @@ export function WebhookInlineHelp() {
     <div style={{ background: '#1a1a1a', padding: '1rem', borderRadius: '4px' }}>
       <h4 style={{ marginBottom: '0.5rem', fontSize: '0.85rem' }}>How Webhook Works</h4>
       <ol style={{ paddingLeft: '1.25rem', color: '#aaa', fontSize: '0.8rem', marginBottom: '1rem' }}>
-        <li>When you click "Dispatch" on an issue, Abacus POSTs to your endpoint</li>
+        <li>On an issue, select this executor and click "Dispatch" — Abacus POSTs to your endpoint</li>
         <li>Payload includes: <code>{`{action, issue_id, repo, issue}`}</code></li>
         <li>Your server receives the webhook and processes the issue</li>
       </ol>

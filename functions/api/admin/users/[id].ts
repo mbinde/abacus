@@ -1,14 +1,22 @@
 // /api/admin/users/:id - Update and delete users (admin only)
 
 import type { UserContext } from '../../_middleware'
+import { logAction, generateRequestId } from '../../../lib/action-log'
 
 interface Env {
   DB: D1Database
   SESSIONS: KVNamespace
 }
 
-// Audit log helper - logs admin actions to console in structured format
-function auditLog(action: string, adminUser: UserContext, targetUserId: number, details: Record<string, unknown> = {}) {
+// Audit log helper - logs admin actions to console AND database for persistence
+async function auditLog(
+  db: D1Database,
+  action: 'admin_role_change' | 'admin_user_delete',
+  adminUser: UserContext,
+  targetUserId: number,
+  details: Record<string, unknown> = {}
+) {
+  // Console log for real-time visibility
   console.log(JSON.stringify({
     type: 'AUDIT',
     timestamp: new Date().toISOString(),
@@ -22,6 +30,19 @@ function auditLog(action: string, adminUser: UserContext, targetUserId: number, 
     },
     ...details,
   }))
+
+  // Database log for persistence
+  await logAction(db, {
+    userId: adminUser.id,
+    userLogin: adminUser.github_login,
+    action,
+    success: true,
+    requestPayload: {
+      targetUserId,
+      ...details,
+    },
+    requestId: generateRequestId(),
+  })
 }
 
 // PUT /api/admin/users/:id - Update user role
@@ -71,7 +92,7 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
     await env.DB.prepare('UPDATE users SET role = ? WHERE id = ?')
       .bind(role, targetUserId).run()
 
-    auditLog('ROLE_CHANGE', currentUser, targetUserId, {
+    await auditLog(env.DB, 'admin_role_change', currentUser, targetUserId, {
       targetLogin: targetUser.github_login,
       oldRole,
       newRole: role,
@@ -139,7 +160,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     // Delete user (CASCADE will delete their user_repos links)
     await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(targetUserId).run()
 
-    auditLog('USER_DELETE', currentUser, targetUserId, {
+    await auditLog(env.DB, 'admin_user_delete', currentUser, targetUserId, {
       targetLogin: targetUser.github_login,
     })
 

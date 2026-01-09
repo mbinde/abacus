@@ -74,9 +74,9 @@ function sanitizePayload(payload: unknown): unknown {
 export interface ActionLogEntry {
   userId?: number
   userLogin?: string
-  action: 'update_issue' | 'add_comment' | 'delete_issue' | 'bulk_update' | 'create_issue'
-  repoOwner: string
-  repoName: string
+  action: 'update_issue' | 'add_comment' | 'delete_issue' | 'bulk_update' | 'create_issue' | 'admin_role_change' | 'admin_user_delete'
+  repoOwner?: string
+  repoName?: string
   issueId?: string
   requestPayload?: unknown
   success: boolean
@@ -109,8 +109,8 @@ export async function logAction(
       entry.userId ?? null,
       entry.userLogin ?? null,
       entry.action,
-      entry.repoOwner,
-      entry.repoName,
+      entry.repoOwner ?? null,
+      entry.repoName ?? null,
       entry.issueId ?? null,
       sanitizedPayload,
       entry.success ? 1 : 0,

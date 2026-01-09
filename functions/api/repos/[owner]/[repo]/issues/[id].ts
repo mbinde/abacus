@@ -3,6 +3,7 @@
 import type { UserContext, AnonymousContext } from '../../../../_middleware'
 import { logAction, startTimer, generateRequestId } from '../../../../../lib/action-log'
 import { validateRepoAccess, isAnonymous } from '../../../../../lib/repo-access'
+import { validateIssueId, validateRepoOwner, validateRepoName } from '../../../../../lib/validation'
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -52,6 +53,29 @@ export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) =
   if (user.role === 'guest') {
     return new Response(JSON.stringify({ error: 'Guest users cannot update issues. Contact an admin to upgrade your account.' }), {
       status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Validate path parameters
+  const ownerValidation = validateRepoOwner(owner)
+  if (!ownerValidation.valid) {
+    return new Response(JSON.stringify({ error: ownerValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const repoValidation = validateRepoName(repo)
+  if (!repoValidation.valid) {
+    return new Response(JSON.stringify({ error: repoValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const issueIdValidation = validateIssueId(issueId)
+  if (!issueIdValidation.valid) {
+    return new Response(JSON.stringify({ error: issueIdValidation.error }), {
+      status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
   }
@@ -433,6 +457,29 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database }> = async (context
   if (user.role === 'guest') {
     return new Response(JSON.stringify({ error: 'Guest users cannot delete issues. Contact an admin to upgrade your account.' }), {
       status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Validate path parameters
+  const ownerValidation = validateRepoOwner(owner)
+  if (!ownerValidation.valid) {
+    return new Response(JSON.stringify({ error: ownerValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const repoValidation = validateRepoName(repo)
+  if (!repoValidation.valid) {
+    return new Response(JSON.stringify({ error: repoValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const issueIdValidation = validateIssueId(issueId)
+  if (!issueIdValidation.valid) {
+    return new Response(JSON.stringify({ error: issueIdValidation.error }), {
+      status: 400,
       headers: { 'Content-Type': 'application/json' },
     })
   }

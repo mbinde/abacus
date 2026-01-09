@@ -1,4 +1,5 @@
 import { useState, useEffect, FormEvent } from 'react'
+import { apiFetch } from '../lib/api'
 
 interface Repo {
   id: number
@@ -113,7 +114,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
     setDrawerLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/repos/${repoId}/webhook/configure`, { method: 'POST' })
+      const res = await apiFetch(`/api/repos/${repoId}/webhook/configure`, { method: 'POST' })
       if (res.ok) {
         await loadRepoData(repoId)
       } else {
@@ -131,7 +132,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
     setDrawerLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/repos/${repoId}/webhook/confirm`, { method: 'POST' })
+      const res = await apiFetch(`/api/repos/${repoId}/webhook/confirm`, { method: 'POST' })
       if (res.ok) {
         setSuccess('Webhook configured successfully!')
         setTimeout(() => setSuccess(null), 3000)
@@ -155,7 +156,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
     setDrawerLoading(true)
     setError(null)
     try {
-      const res = await fetch(`/api/repos/${repoId}/webhook`, { method: 'DELETE' })
+      const res = await apiFetch(`/api/repos/${repoId}/webhook`, { method: 'DELETE' })
       if (res.ok) {
         setSuccess('Webhook deleted')
         setTimeout(() => setSuccess(null), 3000)
@@ -176,7 +177,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
     setSavingSettings(true)
     setError(null)
     try {
-      const res = await fetch(`/api/repos/${repoId}/settings`, {
+      const res = await apiFetch(`/api/repos/${repoId}/settings`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(settings),
@@ -209,7 +210,7 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
     setSavingEmail(true)
 
     try {
-      const res = await fetch('/api/user/profile', {
+      const res = await apiFetch('/api/user/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ email: email || null }),

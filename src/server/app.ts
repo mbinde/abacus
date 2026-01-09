@@ -48,8 +48,16 @@ export function createApp(context: AppContext) {
     await next()
   })
 
-  // CORS for API routes
-  app.use('/api/*', cors())
+  // CORS for API routes - restrict to same origin only
+  // Extract origin from baseUrl (e.g., "https://abacus.example.com" -> same)
+  const allowedOrigin = new URL(context.config.baseUrl).origin
+  app.use('/api/*', cors({
+    origin: allowedOrigin,
+    credentials: true,
+    allowMethods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+    allowHeaders: ['Content-Type', 'Authorization'],
+    maxAge: 86400,
+  }))
 
   // Public endpoints (no auth required)
   const publicPaths = ['/api/auth/check', '/api/auth/github', '/api/auth/callback', '/api/auth/logout', '/api/webhooks/github']
@@ -70,7 +78,17 @@ export function createApp(context: AppContext) {
         const result = await ctx.sessions.checkRateLimit(`oauth:${ip}`, 10, 60)
 
         if (!result.allowed) {
-          return c.json({ error: 'Too many requests' }, 429)
+          const retryAfter = Math.max(0, result.resetAt - Math.floor(Date.now() / 1000))
+          return c.json(
+            { error: 'Too many requests. Please try again later.' },
+            429,
+            {
+              'Retry-After': String(retryAfter),
+              'X-RateLimit-Limit': '10',
+              'X-RateLimit-Remaining': '0',
+              'X-RateLimit-Reset': String(result.resetAt),
+            }
+          )
         }
       }
       return next()

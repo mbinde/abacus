@@ -187,14 +187,53 @@ const SECURITY_HEADERS = {
   'X-Content-Type-Options': 'nosniff',
   'X-Frame-Options': 'DENY',
   'Referrer-Policy': 'strict-origin-when-cross-origin',
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  // CSP for API responses - more restrictive since they're JSON, not HTML
+  'Content-Security-Policy': "default-src 'none'; frame-ancestors 'none'",
+}
+
+// CSRF protection: require custom header for state-changing operations
+// Browsers block cross-origin sites from setting custom headers
+const CSRF_HEADER = 'X-Requested-With'
+const CSRF_HEADER_VALUE = 'abacus'
+
+function requiresCsrfProtection(method: string, pathname: string): boolean {
+  // Only state-changing methods need protection
+  if (!['POST', 'PUT', 'DELETE', 'PATCH'].includes(method)) return false
+
+  // Webhook endpoint is called by GitHub, not the browser
+  if (pathname === '/api/webhooks/github') return false
+
+  return true
+}
+
+// Validate that the origin matches the request's own origin (same-origin policy)
+// For Cloudflare Pages, the frontend and API are served from the same origin
+function isAllowedOrigin(origin: string, requestUrl: URL): boolean {
+  // Same-origin: the Origin header should match the request's origin
+  const requestOrigin = requestUrl.origin
+  return origin === requestOrigin
 }
 
 // Add security headers to a response
-function addSecurityHeaders(response: Response): Response {
+function addSecurityHeaders(response: Response, request?: Request): Response {
   const newResponse = new Response(response.body, response)
   for (const [key, value] of Object.entries(SECURITY_HEADERS)) {
     newResponse.headers.set(key, value)
   }
+
+  // Add CORS headers for same-origin requests
+  if (request) {
+    const origin = request.headers.get('Origin')
+    if (origin) {
+      const url = new URL(request.url)
+      if (isAllowedOrigin(origin, url)) {
+        newResponse.headers.set('Access-Control-Allow-Origin', origin)
+        newResponse.headers.set('Access-Control-Allow-Credentials', 'true')
+      }
+    }
+  }
+
   return newResponse
 }
 
@@ -206,9 +245,16 @@ function handleCors(request: Request): Response | null {
   const origin = request.headers.get('Origin')
   if (!origin) return null
 
-  // For same-origin requests (Cloudflare Pages), allow
+  const url = new URL(request.url)
+
+  // Only allow same-origin requests
+  if (!isAllowedOrigin(origin, url)) {
+    return new Response('CORS origin not allowed', { status: 403 })
+  }
+
   const headers = new Headers({
     'Access-Control-Allow-Origin': origin,
+    'Access-Control-Allow-Credentials': 'true',
     'Access-Control-Allow-Methods': 'GET, POST, PUT, DELETE, OPTIONS',
     'Access-Control-Allow-Headers': 'Content-Type, Authorization',
     'Access-Control-Max-Age': '86400',
@@ -226,6 +272,17 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const corsResponse = handleCors(request)
   if (corsResponse) return corsResponse
 
+  // CSRF protection: require custom header for state-changing operations
+  if (requiresCsrfProtection(request.method, url.pathname)) {
+    const csrfHeader = request.headers.get(CSRF_HEADER)
+    if (csrfHeader !== CSRF_HEADER_VALUE) {
+      return addSecurityHeaders(new Response(JSON.stringify({ error: 'Missing or invalid CSRF header' }), {
+        status: 403,
+        headers: { 'Content-Type': 'application/json' },
+      }), request)
+    }
+  }
+
   // Check rate limits for this endpoint
   const rateLimitCategory = getRateLimitCategory(url.pathname, request.method)
 
@@ -239,12 +296,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       const rateLimit = await checkRateLimit(rateLimitCategory, identifier, env)
 
       if (!rateLimit.allowed) {
-        return addSecurityHeaders(rateLimitResponse(rateLimit.resetAt, RATE_LIMITS[rateLimitCategory].max))
+        return addSecurityHeaders(rateLimitResponse(rateLimit.resetAt, RATE_LIMITS[rateLimitCategory].max), request)
       }
 
       // Add rate limit headers to successful responses
       const response = await next()
-      const newResponse = addSecurityHeaders(response)
+      const newResponse = addSecurityHeaders(response, request)
       newResponse.headers.set('X-RateLimit-Limit', String(RATE_LIMITS[rateLimitCategory].max))
       newResponse.headers.set('X-RateLimit-Remaining', String(rateLimit.remaining))
       newResponse.headers.set('X-RateLimit-Reset', String(rateLimit.resetAt))
@@ -263,7 +320,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
 
   if (publicPaths.some(p => url.pathname === p)) {
     const response = await next()
-    return addSecurityHeaders(response)
+    return addSecurityHeaders(response, request)
   }
 
   // Get session
@@ -276,14 +333,14 @@ export const onRequest: PagesFunction<Env> = async (context) => {
       if (anonEnabled) {
         ;(data as { user: AnonymousContext }).user = { anonymous: true }
         const response = await next()
-        return addSecurityHeaders(response)
+        return addSecurityHeaders(response, request)
       }
     }
 
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
-    }))
+    }), request)
   }
 
   // Get user's encrypted token from DB
@@ -295,7 +352,7 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     return addSecurityHeaders(new Response(JSON.stringify({ error: 'User not found' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },
-    }))
+    }), request)
   }
 
   // Decrypt token
@@ -316,12 +373,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
     const rateLimit = await checkRateLimit(rateLimitCategory, String(session.userId), env)
 
     if (!rateLimit.allowed) {
-      return addSecurityHeaders(rateLimitResponse(rateLimit.resetAt, RATE_LIMITS[rateLimitCategory].max))
+      return addSecurityHeaders(rateLimitResponse(rateLimit.resetAt, RATE_LIMITS[rateLimitCategory].max), request)
     }
 
     // Add rate limit headers to successful responses
     const response = await next()
-    const newResponse = addSecurityHeaders(response)
+    const newResponse = addSecurityHeaders(response, request)
     newResponse.headers.set('X-RateLimit-Limit', String(RATE_LIMITS[rateLimitCategory].max))
     newResponse.headers.set('X-RateLimit-Remaining', String(rateLimit.remaining))
     newResponse.headers.set('X-RateLimit-Reset', String(rateLimit.resetAt))
@@ -329,5 +386,5 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   }
 
   const response = await next()
-  return addSecurityHeaders(response)
+  return addSecurityHeaders(response, request)
 }

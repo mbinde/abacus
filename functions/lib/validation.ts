@@ -146,8 +146,10 @@ export function validateIssueId(id: string): ValidationResult {
   if (!id || typeof id !== 'string') {
     return { valid: false, error: 'Issue ID is required' }
   }
-  // Issue IDs are prefix-xxx format
-  const idPattern = /^[a-z0-9]+-[a-z0-9]{3}$/
+  // Issue IDs are prefix-hash format
+  // Legacy: prefix-xxx (3 alphanumeric chars)
+  // New: prefix-xxxxxxxxxxxx (12 hex chars)
+  const idPattern = /^[a-z0-9]+-[a-z0-9]{3,12}$/
   if (!idPattern.test(id)) {
     return { valid: false, error: 'Invalid issue ID format' }
   }

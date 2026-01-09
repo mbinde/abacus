@@ -1,5 +1,6 @@
 import { useState, useEffect, FormEvent } from 'react'
 import ExecutorHelp, { LabelPollInlineHelp, WebhookInlineHelp } from './ExecutorHelp'
+import { apiFetch } from '../lib/api'
 
 // ExecutorHelp is used in the main component for the Setup Guide button
 
@@ -51,7 +52,7 @@ export default function ExecutorSettings({ repoOwner, repoName, onBack }: Props)
   async function handleSave(executor: Executor) {
     setError(null)
     try {
-      const res = await fetch(`/api/repos/${repoOwner}/${repoName}/executors/${executor.name}`, {
+      const res = await apiFetch(`/api/repos/${repoOwner}/${repoName}/executors/${executor.name}`, {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(executor),
@@ -75,7 +76,7 @@ export default function ExecutorSettings({ repoOwner, repoName, onBack }: Props)
 
     setError(null)
     try {
-      const res = await fetch(`/api/repos/${repoOwner}/${repoName}/executors/${name}`, {
+      const res = await apiFetch(`/api/repos/${repoOwner}/${repoName}/executors/${name}`, {
         method: 'DELETE',
       })
 
@@ -209,6 +210,28 @@ interface FormProps {
   error: string | null
 }
 
+// Validation patterns
+const NAME_PATTERN = /^[a-z0-9-]+$/
+const LABEL_PATTERN = /^[a-zA-Z0-9:_-]+$/
+
+function validateName(value: string): string | null {
+  if (!value) return null
+  if (value.includes(' ')) return 'Name cannot contain spaces (use hyphens instead)'
+  if (!NAME_PATTERN.test(value)) return 'Name can only contain lowercase letters, numbers, and hyphens'
+  return null
+}
+
+function validateLabel(value: string): string | null {
+  if (!value) return null
+  if (value.includes(' ')) return 'Label cannot contain spaces (use hyphens or underscores)'
+  if (!LABEL_PATTERN.test(value)) return 'Label can only contain letters, numbers, colons, underscores, and hyphens'
+  return null
+}
+
+function normalizeForLabel(value: string): string {
+  return value.toLowerCase().replace(/\s+/g, '-').replace(/[^a-z0-9-]/g, '')
+}
+
 function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
   const [name, setName] = useState(executor.name)
   const [type, setType] = useState<'label-poll' | 'webhook'>(executor.type)
@@ -216,8 +239,50 @@ function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
   const [endpoint, setEndpoint] = useState(executor.endpoint || '')
   const [description, setDescription] = useState(executor.description || '')
 
+  // Track if user has manually edited each field
+  const [labelTouched, setLabelTouched] = useState(!!executor.label)
+  const [nameTouched, setNameTouched] = useState(!!executor.name)
+
+  // Validation errors
+  const nameError = validateName(name)
+  const labelError = validateLabel(label)
+
+  // Auto-fill label from name
+  function handleNameChange(value: string) {
+    setName(value)
+    setNameTouched(true)
+
+    // Auto-fill label if not manually edited and type is label-poll
+    if (!labelTouched && type === 'label-poll' && value) {
+      const normalized = normalizeForLabel(value)
+      setLabel(`exec:${normalized}`)
+    }
+  }
+
+  // Auto-fill name from label
+  function handleLabelChange(value: string) {
+    setLabel(value)
+    setLabelTouched(true)
+
+    // Auto-fill name if not manually edited
+    if (!nameTouched && value) {
+      // Extract name from exec:name pattern
+      const match = value.match(/^exec:(.+)$/)
+      if (match) {
+        const normalized = normalizeForLabel(match[1])
+        setName(normalized)
+      }
+    }
+  }
+
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
+
+    // Check for validation errors
+    if (nameError || (type === 'label-poll' && labelError)) {
+      return
+    }
+
     onSave({
       name,
       type,
@@ -241,13 +306,22 @@ function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
           <input
             type="text"
             value={name}
-            onChange={(e) => setName(e.target.value)}
+            onChange={(e) => handleNameChange(e.target.value)}
             placeholder="e.g., home-mac"
             required
             disabled={!isNew}
-            pattern="[a-z0-9-]+"
-            title="Lowercase letters, numbers, and hyphens only"
+            style={nameError ? { borderColor: '#ff6b6b' } : undefined}
           />
+          {nameError && (
+            <div style={{ color: '#ff6b6b', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+              {nameError}
+            </div>
+          )}
+          {!nameError && (
+            <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+              Lowercase letters, numbers, and hyphens only
+            </div>
+          )}
         </div>
 
         <div className="mb-2">
@@ -274,13 +348,21 @@ function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
                 <input
                   type="text"
                   value={label}
-                  onChange={(e) => setLabel(e.target.value)}
+                  onChange={(e) => handleLabelChange(e.target.value)}
                   placeholder="e.g., exec:home-mac"
                   required
+                  style={labelError ? { borderColor: '#ff6b6b' } : undefined}
                 />
-                <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-                  This label is added to the issue when dispatched. Your agent can use <code>bd list --label=LABEL</code> to find dispatched work.
-                </div>
+                {labelError && (
+                  <div style={{ color: '#ff6b6b', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                    {labelError}
+                  </div>
+                )}
+                {!labelError && (
+                  <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                    This label is added to the issue when dispatched. Your agent can use <code>bd list --label=LABEL</code> to find dispatched work.
+                  </div>
+                )}
               </div>
             )}
 
@@ -316,20 +398,23 @@ function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
           />
         </div>
 
-        <div style={{ marginBottom: '1rem' }}>
-          {type === 'label-poll' && <LabelPollInlineHelp label={label} />}
-          {type === 'webhook' && <WebhookInlineHelp />}
-        </div>
-
-        <div className="flex" style={{ justifyContent: 'flex-end' }}>
+        <div className="flex mb-2" style={{ justifyContent: 'flex-end' }}>
           <button type="button" onClick={onCancel} style={{ background: '#444' }}>
             Cancel
           </button>
-          <button type="submit">
+          <button
+            type="submit"
+            disabled={!!nameError || (type === 'label-poll' && !!labelError)}
+          >
             {isNew ? 'Create' : 'Save'}
           </button>
         </div>
       </form>
+
+      <div style={{ marginTop: '1rem' }}>
+        {type === 'label-poll' && <LabelPollInlineHelp label={label} />}
+        {type === 'webhook' && <WebhookInlineHelp />}
+      </div>
     </div>
   )
 }

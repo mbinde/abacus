@@ -3,6 +3,16 @@
 import { decryptToken } from '../../lib/crypto'
 import { queueNotification } from '../notifications/queue'
 
+// HTML encode user-controlled content to prevent HTML injection in emails
+function htmlEncode(str: string): string {
+  return str
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#x27;')
+}
+
 interface Env {
   DB: D1Database
   RESEND_API_KEY: string
@@ -62,6 +72,11 @@ async function sendEmailImmediate(
     }
   }
 
+  // HTML-encode user-controlled content to prevent injection
+  const safeTitle = htmlEncode(notification.issueTitle)
+  const safeIssueId = htmlEncode(notification.issueId)
+  const safeDetails = details ? htmlEncode(details) : ''
+
   const subject = `[${notification.repoOwner}/${notification.repoName}] ${emoji} ${notification.issueTitle}`
   const html = `
     <div style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; max-width: 600px; margin: 0 auto;">
@@ -70,10 +85,10 @@ async function sendEmailImmediate(
       </h2>
       <div style="padding: 12px; background: #f8f9fa; border-radius: 4px; border-left: 3px solid ${notification.changeType === 'created' ? '#4ade80' : notification.changeType === 'closed' ? '#666' : '#64b4ff'};">
         <div style="font-weight: 600; color: #333;">
-          ${notification.issueTitle}
+          ${safeTitle}
         </div>
         <div style="font-size: 12px; color: #888; margin-top: 4px;">
-          <code>${notification.issueId}</code> · ${changeLabel}${details ? ` · ${details}` : ''}
+          <code>${safeIssueId}</code> · ${changeLabel}${safeDetails ? ` · ${safeDetails}` : ''}
         </div>
       </div>
       <p style="color: #999; font-size: 12px; margin-top: 24px; border-top: 1px solid #ddd; padding-top: 12px;">
@@ -241,8 +256,8 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     data = JSON.parse(payload) as PushEvent
   } catch (err) {
-    console.error('[webhook] Failed to parse payload:', err)
-    console.error('[webhook] Raw payload (first 500 chars):', payload.substring(0, 500))
+    // Log error type but NOT payload content (may contain sensitive data)
+    console.error('[webhook] Failed to parse payload as JSON:', err instanceof Error ? err.message : 'Unknown error')
     console.error('[webhook] Payload length:', payload.length)
     return new Response('Invalid payload - expected JSON', { status: 400 })
   }
