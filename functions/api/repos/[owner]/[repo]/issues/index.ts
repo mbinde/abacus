@@ -1,6 +1,23 @@
 // /api/repos/:owner/:repo/issues - List and create issues
 
-import type { UserContext } from '../../../../_middleware'
+import type { UserContext, AnonymousContext } from '../../../../_middleware'
+
+// Helper to check if user is anonymous
+function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
+  return 'anonymous' in user && user.anonymous === true
+}
+
+// Helper to build GitHub API headers
+function githubHeaders(token?: string): Record<string, string> {
+  const headers: Record<string, string> = {
+    'Accept': 'application/vnd.github.v3+json',
+    'User-Agent': 'abacus',
+  }
+  if (token) {
+    headers['Authorization'] = `token ${token}`
+  }
+  return headers
+}
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -43,9 +60,12 @@ const BASE_DELAY_MS = 100
 // GET /api/repos/:owner/:repo/issues - List all issues
 export const onRequestGet: PagesFunction = async (context) => {
   const { params, data } = context
-  const user = (data as { user: UserContext }).user
+  const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
+
+  // Get token (undefined for anonymous users - uses public API)
+  const token = isAnonymous(user) ? undefined : user.githubToken
 
   try {
     const issues: Issue[] = []
@@ -54,13 +74,7 @@ export const onRequestGet: PagesFunction = async (context) => {
     // Try JSONL format first
     const jsonlRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
-      {
-        headers: {
-          'Authorization': `token ${user.githubToken}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'abacus',
-        },
-      }
+      { headers: githubHeaders(token) }
     )
 
     if (jsonlRes.ok) {
@@ -77,13 +91,7 @@ export const onRequestGet: PagesFunction = async (context) => {
       format = 'markdown'
       const dirRes = await fetch(
         `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues`,
-        {
-          headers: {
-            'Authorization': `token ${user.githubToken}`,
-            'Accept': 'application/vnd.github.v3+json',
-            'User-Agent': 'abacus',
-          },
-        }
+        { headers: githubHeaders(token) }
       )
 
       if (dirRes.ok) {
@@ -105,13 +113,7 @@ export const onRequestGet: PagesFunction = async (context) => {
     // Get deletions to filter out deleted issues
     const deletionsRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/.beads/deletions.jsonl`,
-      {
-        headers: {
-          'Authorization': `token ${user.githubToken}`,
-          'Accept': 'application/vnd.github.v3+json',
-          'User-Agent': 'abacus',
-        },
-      }
+      { headers: githubHeaders(token) }
     )
 
     const deletedIds = new Set<string>()
@@ -145,9 +147,24 @@ export const onRequestGet: PagesFunction = async (context) => {
 // POST /api/repos/:owner/:repo/issues - Create a new issue
 export const onRequestPost: PagesFunction = async (context) => {
   const { request, params, data } = context
-  const user = (data as { user: UserContext }).user
+  const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
+
+  // Block anonymous users and guests from creating issues
+  if (isAnonymous(user)) {
+    return new Response(JSON.stringify({ error: 'Login required to create issues' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (user.role === 'guest') {
+    return new Response(JSON.stringify({ error: 'Guest users cannot create issues. Contact an admin to upgrade your account.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
   try {
     const reqData = await request.json() as Partial<Issue>

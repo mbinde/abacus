@@ -29,13 +29,16 @@ interface Props {
   onToggleStar: (issueId: string, starred: boolean) => void
   onBulkUpdate?: (issueIds: string[], updates: BulkUpdate) => Promise<void>
   onCreateNew?: () => void
+  readOnly?: boolean
 }
 
 type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tree' | 'kanban'
 type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
 type SortDir = 'asc' | 'desc'
 
-export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew }: Props) {
+export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew, readOnly }: Props) {
+  // Disable bulk updates in read-only mode
+  const effectiveBulkUpdate = readOnly ? undefined : onBulkUpdate
   const [filter, setFilter] = useState<StatusFilter>(() => {
     const saved = localStorage.getItem('abacus:statusFilter')
     return (saved as StatusFilter) || 'open'
@@ -255,10 +258,10 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
   }
 
   const handleBulkAction = async (updates: BulkUpdate) => {
-    if (!onBulkUpdate || checkedIds.size === 0) return
+    if (!effectiveBulkUpdate || checkedIds.size === 0) return
     setBulkLoading(true)
     try {
-      await onBulkUpdate(Array.from(checkedIds), updates)
+      await effectiveBulkUpdate(Array.from(checkedIds), updates)
       setCheckedIds(new Set())
     } finally {
       setBulkLoading(false)
@@ -277,8 +280,8 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
 
   // Handle status change for kanban board
   const handleStatusChange = (issueId: string, newStatus: 'open' | 'in_progress' | 'closed') => {
-    if (onBulkUpdate) {
-      onBulkUpdate([issueId], { status: newStatus })
+    if (effectiveBulkUpdate) {
+      effectiveBulkUpdate([issueId], { status: newStatus })
     }
   }
 
@@ -340,7 +343,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
           </button>
         </div>
       </div>
-      {checkedIds.size > 0 && onBulkUpdate && filter !== 'kanban' && (
+      {checkedIds.size > 0 && effectiveBulkUpdate && filter !== 'kanban' && (
         <BulkActionsBar
           count={checkedIds.size}
           loading={bulkLoading}
@@ -362,7 +365,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
       <table>
         <thead>
           <tr>
-            {onBulkUpdate && (
+            {effectiveBulkUpdate && (
               <th style={{ width: '40px' }}>
                 <input
                   type="checkbox"
@@ -392,7 +395,7 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
               }}
               onClick={() => setSelectedIndex(index)}
             >
-              {onBulkUpdate && (
+              {effectiveBulkUpdate && (
                 <td>
                   <input
                     type="checkbox"

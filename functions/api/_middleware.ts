@@ -63,6 +63,22 @@ export interface UserContext {
   githubToken: string
 }
 
+// Anonymous user context for unauthenticated access
+export interface AnonymousContext {
+  anonymous: true
+}
+
+export type RequestContext = { user: UserContext } | { user: AnonymousContext }
+
+// Check if path is for the public demo repo (read-only access allowed without auth)
+function isPublicDemoRepoReadPath(pathname: string, method: string): boolean {
+  // Only allow GET requests to steveyegge/beads
+  if (method !== 'GET') return false
+
+  const demoRepoPattern = /^\/api\/repos\/steveyegge\/beads\//
+  return demoRepoPattern.test(pathname)
+}
+
 // Get session data from cookie
 async function getSession(request: Request, env: Env): Promise<SessionData | null> {
   const cookie = request.headers.get('Cookie') || ''
@@ -127,6 +143,12 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const session = await getSession(request, env)
 
   if (!session) {
+    // Allow anonymous read-only access to demo repo
+    if (isPublicDemoRepoReadPath(url.pathname, request.method)) {
+      ;(data as { user: AnonymousContext }).user = { anonymous: true }
+      return next()
+    }
+
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {
       status: 401,
       headers: { 'Content-Type': 'application/json' },

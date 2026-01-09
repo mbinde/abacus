@@ -38,8 +38,9 @@ interface Props {
   onClose: () => void
   repoOwner: string
   repoName: string
-  currentUser: User
+  currentUser: User | null
   onCommentAdded?: () => void
+  readOnly?: boolean
 }
 
 const statusColors: Record<string, string> = {
@@ -67,7 +68,7 @@ interface PendingComment extends Comment {
   status: 'saving' | 'failed'
 }
 
-export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, currentUser, onCommentAdded }: Props) {
+export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, currentUser, onCommentAdded, readOnly }: Props) {
   const [newComment, setNewComment] = useState('')
   const [commentLoading, setCommentLoading] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
@@ -75,7 +76,7 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
 
   async function handleAddComment(e: FormEvent) {
     e.preventDefault()
-    if (!newComment.trim()) return
+    if (!newComment.trim() || !currentUser) return
 
     const commentText = newComment.trim()
     setCommentLoading(true)
@@ -179,11 +180,13 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
           </div>
         </div>
         <div style={{ display: 'flex', gap: '0.5rem' }}>
-          <button onClick={onEdit} style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}>
-            Edit
-          </button>
+          {!readOnly && (
+            <button onClick={onEdit} style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}>
+              Edit
+            </button>
+          )}
           <button onClick={onClose} style={{ fontSize: '0.8rem', padding: '0.375rem 0.75rem', background: '#444' }}>
-            Close
+            Back
           </button>
         </div>
       </div>
@@ -227,12 +230,14 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
         </div>
       )}
 
-      {/* Dispatch button */}
-      <DispatchButton
-        repoOwner={repoOwner}
-        repoName={repoName}
-        issueId={issue.id}
-      />
+      {/* Dispatch button - only for non-read-only users */}
+      {!readOnly && (
+        <DispatchButton
+          repoOwner={repoOwner}
+          repoName={repoName}
+          issueId={issue.id}
+        />
+      )}
 
       {/* Comments section */}
       <div style={{ borderTop: '1px solid #333', paddingTop: '1rem', marginTop: '1rem' }}>
@@ -319,23 +324,30 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
 
         {commentError && <div className="error" style={{ marginBottom: '0.5rem' }}>{commentError}</div>}
 
-        <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem' }}>
-          <textarea
-            value={newComment}
-            onChange={(e) => setNewComment(e.target.value)}
-            placeholder="Add a comment..."
-            rows={2}
-            style={{ flex: 1, fontSize: '0.9rem' }}
-            disabled={commentLoading}
-          />
-          <button
-            type="submit"
-            disabled={commentLoading || !newComment.trim()}
-            style={{ alignSelf: 'flex-end', fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
-          >
-            {commentLoading ? '...' : 'Comment'}
-          </button>
-        </form>
+        {!readOnly && currentUser && (
+          <form onSubmit={handleAddComment} style={{ display: 'flex', gap: '0.5rem' }}>
+            <textarea
+              value={newComment}
+              onChange={(e) => setNewComment(e.target.value)}
+              placeholder="Add a comment..."
+              rows={2}
+              style={{ flex: 1, fontSize: '0.9rem' }}
+              disabled={commentLoading}
+            />
+            <button
+              type="submit"
+              disabled={commentLoading || !newComment.trim()}
+              style={{ alignSelf: 'flex-end', fontSize: '0.8rem', padding: '0.375rem 0.75rem' }}
+            >
+              {commentLoading ? '...' : 'Comment'}
+            </button>
+          </form>
+        )}
+        {readOnly && (
+          <div style={{ fontSize: '0.85rem', color: '#888', fontStyle: 'italic' }}>
+            Log in to add comments
+          </div>
+        )}
       </div>
     </div>
   )

@@ -52,6 +52,12 @@ interface User {
   role: 'admin' | 'premium' | 'user' | 'guest'
 }
 
+// Check if user can perform mutations (create, update, delete, comment)
+function canMutate(user: User | null): boolean {
+  if (!user) return false
+  return user.role !== 'guest'
+}
+
 type View = 'list' | 'create' | 'edit' | 'issue' | 'admin' | 'profile' | 'executors' | 'activity' | 'dashboard'
 
 interface AppState {
@@ -199,8 +205,19 @@ export default function App() {
   useEffect(() => {
     if (user) {
       loadRepos()
+    } else if (!loading) {
+      // For anonymous users, set up demo repo
+      const demoRepo: Repo = {
+        id: 0,
+        owner: 'steveyegge',
+        name: 'beads',
+        webhook_configured: false,
+        webhook_is_owner: false,
+      }
+      setRepos([demoRepo])
+      setSelectedRepo(demoRepo)
     }
-  }, [user])
+  }, [user, loading])
 
   useEffect(() => {
     if (selectedRepo) {
@@ -487,12 +504,14 @@ export default function App() {
     return <div className="loading">Loading...</div>
   }
 
-  if (!user) {
-    return <Login error={authError} />
-  }
+  // Determine if user can mutate (for hiding controls)
+  const readOnly = !canMutate(user)
 
-  // Admin panel view
+  // Admin panel view - requires auth and admin role
   if (view === 'admin') {
+    if (!user) {
+      return <Login error={authError} />
+    }
     return (
       <div className="container">
         <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
@@ -501,8 +520,11 @@ export default function App() {
     )
   }
 
-  // Profile view
+  // Profile view - requires auth
   if (view === 'profile') {
+    if (!user) {
+      return <Login error={authError} />
+    }
     return (
       <div className="container">
         <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
@@ -517,8 +539,11 @@ export default function App() {
     )
   }
 
-  // Executors view
+  // Executors view - requires auth
   if (view === 'executors' && selectedRepo) {
+    if (!user) {
+      return <Login error={authError} />
+    }
     return (
       <div className="container">
         <Header user={user} onNavigate={navigate} onLogout={handleLogout} />
@@ -529,6 +554,11 @@ export default function App() {
         />
       </div>
     )
+  }
+
+  // Create/edit views - require mutation permissions
+  if ((view === 'create' || view === 'edit') && readOnly) {
+    return <Login error={authError || (user ? 'Guest users cannot create or edit issues' : null)} />
   }
 
   return (
@@ -574,12 +604,16 @@ export default function App() {
                 >
                   List
                 </button>
-                <button onClick={() => navigate('executors')} style={{ background: '#444' }}>
-                  Executors
-                </button>
-                <button onClick={() => navigate('create')}>
-                  New Issue
-                </button>
+                {!readOnly && (
+                  <>
+                    <button onClick={() => navigate('executors')} style={{ background: '#444' }}>
+                      Executors
+                    </button>
+                    <button onClick={() => navigate('create')}>
+                      New Issue
+                    </button>
+                  </>
+                )}
               </div>
             )}
             {view !== 'list' && view !== 'activity' && view !== 'dashboard' && (
@@ -600,6 +634,7 @@ export default function App() {
               onToggleStar={handleToggleStar}
               onBulkUpdate={handleBulkUpdate}
               onCreateNew={() => navigate('create')}
+              readOnly={readOnly}
             />
           )}
 
@@ -623,6 +658,7 @@ export default function App() {
               repoName={selectedRepo.name}
               currentUser={user}
               onCommentAdded={loadIssues}
+              readOnly={readOnly}
             />
           )}
 

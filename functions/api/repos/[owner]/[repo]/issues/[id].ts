@@ -1,7 +1,12 @@
 // /api/repos/:owner/:repo/issues/:id - Update and delete issues
 
-import type { UserContext } from '../../../../_middleware'
+import type { UserContext, AnonymousContext } from '../../../../_middleware'
 import { logAction, startTimer, generateRequestId } from '../../../../../lib/action-log'
+
+// Helper to check if user is anonymous
+function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
+  return 'anonymous' in user && user.anonymous === true
+}
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -35,10 +40,25 @@ const BASE_DELAY_MS = 100
 // PUT /api/repos/:owner/:repo/issues/:id - Update an issue
 export const onRequestPut: PagesFunction<{ DB?: D1Database }> = async (context) => {
   const { request, params, data, env } = context
-  const user = (data as { user: UserContext }).user
+  const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
   const issueId = params.id as string
+
+  // Block anonymous users and guests from updating issues
+  if (isAnonymous(user)) {
+    return new Response(JSON.stringify({ error: 'Login required to update issues' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (user.role === 'guest') {
+    return new Response(JSON.stringify({ error: 'Guest users cannot update issues. Contact an admin to upgrade your account.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
   const timer = startTimer()
   const requestId = generateRequestId()
@@ -397,10 +417,25 @@ async function updateMarkdownIssueWithMerge(
 // DELETE /api/repos/:owner/:repo/issues/:id - Delete an issue
 export const onRequestDelete: PagesFunction = async (context) => {
   const { params, data } = context
-  const user = (data as { user: UserContext }).user
+  const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
   const issueId = params.id as string
+
+  // Block anonymous users and guests from deleting issues
+  if (isAnonymous(user)) {
+    return new Response(JSON.stringify({ error: 'Login required to delete issues' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (user.role === 'guest') {
+    return new Response(JSON.stringify({ error: 'Guest users cannot delete issues. Contact an admin to upgrade your account.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
   try {
     // For JSONL format, we add to deletions.jsonl rather than modifying issues.jsonl

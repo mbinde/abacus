@@ -1,7 +1,12 @@
 // /api/repos/:owner/:repo/issues/:id/comments - Add comments to issues
 
-import type { UserContext } from '../../../../../_middleware'
+import type { UserContext, AnonymousContext } from '../../../../../_middleware'
 import { logAction, startTimer, generateRequestId } from '../../../../../../lib/action-log'
+
+// Helper to check if user is anonymous
+function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
+  return 'anonymous' in user && user.anonymous === true
+}
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -41,10 +46,25 @@ const BASE_DELAY_MS = 100
 // POST /api/repos/:owner/:repo/issues/:id/comments - Add a comment
 export const onRequestPost: PagesFunction<{ DB?: D1Database }> = async (context) => {
   const { request, params, data, env } = context
-  const user = (data as { user: UserContext }).user
+  const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
   const issueId = params.id as string
+
+  // Block anonymous users and guests from commenting
+  if (isAnonymous(user)) {
+    return new Response(JSON.stringify({ error: 'Login required to add comments' }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  if (user.role === 'guest') {
+    return new Response(JSON.stringify({ error: 'Guest users cannot add comments. Contact an admin to upgrade your account.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
 
   const timer = startTimer()
   const requestId = generateRequestId()
