@@ -309,10 +309,33 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
         if (await verifySignature(payload, signature, provisional.secret)) {
           isValid = true
           console.log('[webhook] Matched provisional secret id:', provisional.id)
-          // Mark this provisional secret as verified by updating its timestamp
-          await env.DB.prepare(
-            'UPDATE provisional_webhook_secrets SET verified_at = CURRENT_TIMESTAMP WHERE id = ?'
-          ).bind(provisional.id).run()
+
+          // Promote this provisional secret to confirmed webhook secret
+          // First check if another secret was promoted in the meantime (race condition)
+          const currentRepo = await env.DB.prepare(
+            'SELECT webhook_secret, webhook_owner_id FROM repos WHERE id = ?'
+          ).bind(repo.id).first() as { webhook_secret: string | null; webhook_owner_id: number | null } | null
+
+          if (currentRepo && currentRepo.webhook_secret && currentRepo.webhook_owner_id !== provisional.user_id) {
+            // Another user's secret was promoted first - this is fine, their webhook is now active
+            // Just clean up this user's provisional secret
+            console.log('[webhook] Another secret was promoted first, cleaning up provisional')
+            await env.DB.prepare(
+              'DELETE FROM provisional_webhook_secrets WHERE id = ?'
+            ).bind(provisional.id).run()
+          } else {
+            // Promote this secret: update the repo and clean up all provisional secrets for this repo
+            console.log('[webhook] Promoting provisional secret to confirmed, user_id:', provisional.user_id)
+            await env.DB.prepare(
+              'UPDATE repos SET webhook_secret = ?, webhook_owner_id = ? WHERE id = ?'
+            ).bind(provisional.secret, provisional.user_id, repo.id).run()
+
+            // Delete all provisional secrets for this repo (including other users' unverified ones)
+            await env.DB.prepare(
+              'DELETE FROM provisional_webhook_secrets WHERE repo_id = ?'
+            ).bind(repo.id).run()
+          }
+
           break
         }
       }
