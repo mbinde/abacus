@@ -1,5 +1,6 @@
-import { useState, FormEvent } from 'react'
+import { useState, useEffect, FormEvent } from 'react'
 import GitHubLinks from './GitHubLinks'
+import TextEditWarningPane from './TextEditWarningPane'
 import type { GitHubLink } from '../lib/beads'
 
 interface Issue {
@@ -20,11 +21,14 @@ interface Issue {
 
 interface Props {
   issue: Issue | null
-  onSave: (issue: Partial<Issue>) => void
+  onSave: (issue: Partial<Issue>, backupFields?: { title?: string; description?: string }) => void
   onCancel: () => void
+  onConvertToComment?: (commentText: string) => void
 }
 
-export default function IssueForm({ issue, onSave, onCancel }: Props) {
+const BACKUP_PREF_KEY = 'abacus:textEditBackupEnabled'
+
+export default function IssueForm({ issue, onSave, onCancel, onConvertToComment }: Props) {
   const [title, setTitle] = useState(issue?.title || '')
   const [description, setDescription] = useState(issue?.description || '')
   const [issueType, setIssueType] = useState<Issue['issue_type']>(issue?.issue_type || 'task')
@@ -32,6 +36,44 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
   const [priority, setPriority] = useState(issue?.priority || 3)
   const [assignee, setAssignee] = useState(issue?.assignee || '')
   const [links, setLinks] = useState<GitHubLink[]>(issue?.links || [])
+
+  // Track original values to detect text field changes
+  const originalTitle = issue?.title || ''
+  const originalDescription = issue?.description || ''
+
+  // Check if text fields have been modified
+  const titleModified = title !== originalTitle
+  const descriptionModified = description !== originalDescription
+  const textFieldsModified = titleModified || descriptionModified
+
+  // Backup preference - persisted in localStorage
+  const [backupEnabled, setBackupEnabled] = useState(() => {
+    const saved = localStorage.getItem(BACKUP_PREF_KEY)
+    return saved !== null ? saved === 'true' : true // Default to true
+  })
+
+  // Persist backup preference
+  useEffect(() => {
+    localStorage.setItem(BACKUP_PREF_KEY, String(backupEnabled))
+  }, [backupEnabled])
+
+  // Build comment text from text field changes - just the raw text
+  function buildCommentFromChanges(): string {
+    const parts: string[] = []
+    if (titleModified) {
+      parts.push(title)
+    }
+    if (descriptionModified) {
+      parts.push(description)
+    }
+    return parts.join('\n\n')
+  }
+
+  function handleConvertToComment() {
+    if (onConvertToComment && textFieldsModified) {
+      onConvertToComment(buildCommentFromChanges())
+    }
+  }
 
   function handleSubmit(e: FormEvent) {
     e.preventDefault()
@@ -51,7 +93,16 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
       data.sha = issue.sha
     }
 
-    onSave(data)
+    // If editing (not creating) and text fields were modified and backup is enabled,
+    // pass the new text values to be backed up as comments
+    const backupFields = (issue && backupEnabled && textFieldsModified)
+      ? {
+          title: titleModified ? title : undefined,
+          description: descriptionModified ? description : undefined,
+        }
+      : undefined
+
+    onSave(data, backupFields)
   }
 
   const isNew = !issue
@@ -147,6 +198,16 @@ export default function IssueForm({ issue, onSave, onCancel }: Props) {
             onRemove={(index) => setLinks(links.filter((_, i) => i !== index))}
           />
         </div>
+
+        {/* Show warning pane when editing (not creating) and text fields have been modified */}
+        {!isNew && textFieldsModified && (
+          <TextEditWarningPane
+            lastModified={issue?.updated_at}
+            backupEnabled={backupEnabled}
+            onBackupToggle={setBackupEnabled}
+            onConvertToComment={onConvertToComment ? handleConvertToComment : undefined}
+          />
+        )}
 
         <div className="flex" style={{ justifyContent: 'flex-end' }}>
           <button type="button" onClick={onCancel} style={{ background: '#444' }}>

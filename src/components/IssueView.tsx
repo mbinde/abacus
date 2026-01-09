@@ -1,8 +1,14 @@
 import { useState, FormEvent } from 'react'
 import DispatchButton from './DispatchButton'
 import MentionText from './MentionText'
+import BackupComment from './BackupComment'
 import type { GitHubLink } from '../lib/beads'
 import { apiFetch } from '../lib/api'
+
+// Check if a comment is a backup comment
+function isBackupComment(text: string): boolean {
+  return text.startsWith('── backup:')
+}
 
 interface Comment {
   id: number
@@ -42,6 +48,7 @@ interface Props {
   currentUser: User | null
   onCommentAdded?: () => void
   readOnly?: boolean
+  initialComment?: string
 }
 
 const statusColors: Record<string, string> = {
@@ -69,8 +76,8 @@ interface PendingComment extends Comment {
   status: 'saving' | 'failed'
 }
 
-export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, currentUser, onCommentAdded, readOnly }: Props) {
-  const [newComment, setNewComment] = useState('')
+export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName, currentUser, onCommentAdded, readOnly, initialComment }: Props) {
+  const [newComment, setNewComment] = useState(initialComment || '')
   const [commentLoading, setCommentLoading] = useState(false)
   const [commentError, setCommentError] = useState<string | null>(null)
   const [pendingComments, setPendingComments] = useState<PendingComment[]>([])
@@ -252,6 +259,18 @@ export default function IssueView({ issue, onEdit, onClose, repoOwner, repoName,
               const isPending = 'status' in comment
               const isSaving = isPending && comment.status === 'saving'
               const isFailed = isPending && comment.status === 'failed'
+
+              // Check if this is a backup comment (collapsed by default)
+              if (!isPending && isBackupComment(comment.text)) {
+                return (
+                  <BackupComment
+                    key={comment.id}
+                    author={comment.author}
+                    text={comment.text}
+                    createdAt={comment.created_at}
+                  />
+                )
+              }
 
               return (
                 <div
