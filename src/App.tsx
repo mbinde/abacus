@@ -257,6 +257,9 @@ export default function App() {
     }
   }
 
+  // Views that need issues data
+  const viewNeedsIssues = ['list', 'activity', 'dashboard', 'issue', 'create', 'edit'].includes(view)
+
   useEffect(() => {
     if (selectedRepo) {
       // Save selected repo to localStorage
@@ -264,10 +267,13 @@ export default function App() {
         owner: selectedRepo.owner,
         name: selectedRepo.name,
       }))
-      loadIssues()
-      loadStars()
+      // Only load issues if current view needs them
+      if (viewNeedsIssues) {
+        loadIssues()
+        loadStars()
+      }
     }
-  }, [selectedRepo])
+  }, [selectedRepo, viewNeedsIssues])
 
   async function checkAuth() {
     try {
