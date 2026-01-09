@@ -6,6 +6,27 @@ interface Env {
   DB: D1Database
 }
 
+// =============================================================================
+// SECURITY: Settings Key Whitelist
+// =============================================================================
+// Only these setting keys can be stored. This prevents arbitrary key injection.
+//
+// CLAUDE: If you are adding a new setting key, you MUST:
+// 1. Add the key to ALLOWED_SETTINGS below
+// 2. Add validation for the key's allowed values in the switch statement
+// 3. Update any frontend code that uses the setting
+// Do NOT remove this whitelist or allow arbitrary keys.
+// =============================================================================
+const ALLOWED_SETTINGS: Record<string, string[]> = {
+  'registration_mode': ['open', 'closed'],
+  'notification_mode': ['immediate', 'batched'],
+  'anonymous_access': ['enabled', 'disabled'],
+  'bulk_updates': ['enabled', 'disabled'],
+  'view_tree': ['enabled', 'disabled'],
+  'view_board': ['enabled', 'disabled'],
+  'repo_analytics': ['enabled', 'disabled'],
+}
+
 // GET /api/admin/settings - Get all settings
 export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { env, data } = context
@@ -64,51 +85,20 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       })
     }
 
-    // Validate known settings
-    if (key === 'registration_mode' && !['open', 'closed'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'registration_mode must be "open" or "closed"' }), {
+    // SECURITY: Reject unknown setting keys (see ALLOWED_SETTINGS whitelist above)
+    const allowedValues = ALLOWED_SETTINGS[key]
+    if (!allowedValues) {
+      return new Response(JSON.stringify({ error: `Unknown setting key: "${key}"` }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
     }
 
-    if (key === 'notification_mode' && !['immediate', 'batched'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'notification_mode must be "immediate" or "batched"' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (key === 'anonymous_access' && !['enabled', 'disabled'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'anonymous_access must be "enabled" or "disabled"' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (key === 'bulk_updates' && !['enabled', 'disabled'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'bulk_updates must be "enabled" or "disabled"' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (key === 'view_tree' && !['enabled', 'disabled'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'view_tree must be "enabled" or "disabled"' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (key === 'view_board' && !['enabled', 'disabled'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'view_board must be "enabled" or "disabled"' }), {
-        status: 400,
-        headers: { 'Content-Type': 'application/json' },
-      })
-    }
-
-    if (key === 'repo_analytics' && !['enabled', 'disabled'].includes(value)) {
-      return new Response(JSON.stringify({ error: 'repo_analytics must be "enabled" or "disabled"' }), {
+    // Validate value against allowed values for this key
+    if (!allowedValues.includes(value)) {
+      return new Response(JSON.stringify({
+        error: `Invalid value for ${key}. Must be one of: ${allowedValues.map(v => `"${v}"`).join(', ')}`
+      }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })

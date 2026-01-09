@@ -63,13 +63,22 @@ interface Props {
 
 type Tab = 'users' | 'webhooks' | 'logs' | 'analytics'
 
+// Parse tab from URL hash (e.g., #analytics -> 'analytics')
+function getTabFromHash(): Tab {
+  const hash = window.location.hash.slice(1) // Remove '#'
+  if (['users', 'webhooks', 'logs', 'analytics'].includes(hash)) {
+    return hash as Tab
+  }
+  return 'users' // Default tab
+}
+
 export default function AdminPanel({ onBack }: Props) {
   const [users, setUsers] = useState<User[]>([])
   const [webhooks, setWebhooks] = useState<RepoWebhook[]>([])
   const [settings, setSettings] = useState<Settings>({})
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
-  const [activeTab, setActiveTab] = useState<Tab>('users')
+  const [activeTab, setActiveTab] = useState<Tab>(getTabFromHash)
 
   // Analytics state
   const [repoViews, setRepoViews] = useState<RepoViewStats[]>([])
@@ -85,7 +94,35 @@ export default function AdminPanel({ onBack }: Props) {
 
   useEffect(() => {
     loadData()
+    // Load data for initial tab from hash
+    const initialTab = getTabFromHash()
+    if (initialTab === 'logs') loadActionLog()
+    if (initialTab === 'analytics') loadAnalytics()
   }, [])
+
+  // Helper to change tab and update URL
+  function changeTab(tab: Tab) {
+    if (tab === activeTab) return
+    setActiveTab(tab)
+    const newHash = tab === 'users' ? '' : `#${tab}`
+    window.history.pushState(null, '', `/admin${newHash}`)
+    // Load data if needed
+    if (tab === 'logs' && logEntries.length === 0) loadActionLog()
+    if (tab === 'analytics' && repoViews.length === 0) loadAnalytics()
+  }
+
+  // Listen for hash changes (browser back/forward)
+  useEffect(() => {
+    function handleHashChange() {
+      const tab = getTabFromHash()
+      setActiveTab(tab)
+      // Load data for the tab if needed
+      if (tab === 'logs' && logEntries.length === 0) loadActionLog()
+      if (tab === 'analytics' && repoViews.length === 0) loadAnalytics()
+    }
+    window.addEventListener('hashchange', handleHashChange)
+    return () => window.removeEventListener('hashchange', handleHashChange)
+  }, [logEntries.length, repoViews.length])
 
   async function loadData() {
     await Promise.all([loadUsers(), loadSettings(), loadWebhooks()])
@@ -384,7 +421,7 @@ export default function AdminPanel({ onBack }: Props) {
       {/* Tabs */}
       <div style={{ display: 'flex', gap: '0.5rem', marginBottom: '1rem' }}>
         <button
-          onClick={() => setActiveTab('users')}
+          onClick={() => changeTab('users')}
           style={{
             padding: '0.5rem 1rem',
             background: activeTab === 'users' ? '#0077cc' : '#2a2a3a',
@@ -394,7 +431,7 @@ export default function AdminPanel({ onBack }: Props) {
           Users ({users.length})
         </button>
         <button
-          onClick={() => setActiveTab('webhooks')}
+          onClick={() => changeTab('webhooks')}
           style={{
             padding: '0.5rem 1rem',
             background: activeTab === 'webhooks' ? '#0077cc' : '#2a2a3a',
@@ -404,10 +441,7 @@ export default function AdminPanel({ onBack }: Props) {
           Webhooks ({webhooks.filter(w => w.webhook_configured).length}/{webhooks.length})
         </button>
         <button
-          onClick={() => {
-            setActiveTab('logs')
-            if (logEntries.length === 0) loadActionLog()
-          }}
+          onClick={() => changeTab('logs')}
           style={{
             padding: '0.5rem 1rem',
             background: activeTab === 'logs' ? '#0077cc' : '#2a2a3a',
@@ -417,10 +451,7 @@ export default function AdminPanel({ onBack }: Props) {
           Action Log
         </button>
         <button
-          onClick={() => {
-            setActiveTab('analytics')
-            if (repoViews.length === 0) loadAnalytics()
-          }}
+          onClick={() => changeTab('analytics')}
           style={{
             padding: '0.5rem 1rem',
             background: activeTab === 'analytics' ? '#0077cc' : '#2a2a3a',
