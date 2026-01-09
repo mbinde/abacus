@@ -6,7 +6,7 @@ A web UI for managing [beads](https://github.com/steveyegge/beads) issues across
 
 Abacus lets you create, update, and manage beads issues through a web interface. It reads and writes directly to `.beads/issues.jsonl` files in your GitHub repositories via the GitHub API.
 
-You can use Abacus alongside the `bd` CLI - both can edit the same issues without conflicts.
+You can use Abacus alongside the `bd` CLI.
 
 ## Features
 
