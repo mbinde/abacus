@@ -13,9 +13,7 @@ You can use Abacus alongside the `bd` CLI - both can edit the same issues withou
 ## Features
 
 - **Issue Management** - Create, edit, and close beads issues
-- **Multiple Views** - List view, activity feed, and dashboard with charts
-- **Conflict Detection** - Three-way merge detects concurrent edits and helps resolve conflicts
-- **Text Edit Safety** - Warnings when editing text fields that could be overwritten, with backup options
+- **Multiple Views** - List view, activity feed, and dashboard
 - **Starring** - Star important issues for quick access
 - **Bulk Updates** - Update status or priority on multiple issues at once
 - **GitHub Integration** - Link issues to PRs and commits
