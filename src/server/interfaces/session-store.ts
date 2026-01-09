@@ -4,7 +4,7 @@
 export interface SessionData {
   userId: number
   githubId: number
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
 }
 
 export interface SessionStore {

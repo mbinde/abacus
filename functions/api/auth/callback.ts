@@ -156,7 +156,9 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       }
     }
 
-    // Create new user
+    // Create new user (first user is admin, others are guests)
+    const newRole = isFirstUser ? 'admin' : 'guest'
+
     await env.DB.prepare(`
       INSERT INTO users (github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, email, last_login_at)
       VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -166,13 +168,39 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       githubUser.name,
       githubUser.avatar_url,
       encryptedToken,
-      isFirstUser ? 'admin' : 'user',
+      newRole,
       userEmail
     ).run()
 
     user = await env.DB.prepare(
       'SELECT * FROM users WHERE github_id = ?'
     ).bind(githubUser.id).first()
+
+    // Auto-add beads repo for new guest users so they have something to look at
+    if (newRole === 'guest' && user) {
+      // Check if beads repo exists, create if not
+      let beadsRepo = await env.DB.prepare(
+        'SELECT id FROM repos WHERE owner = ? AND name = ?'
+      ).bind('steveyegge', 'beads').first() as { id: number } | null
+
+      if (!beadsRepo) {
+        // Create the repo entry with a placeholder webhook secret
+        await env.DB.prepare(
+          'INSERT INTO repos (owner, name, webhook_secret) VALUES (?, ?, ?)'
+        ).bind('steveyegge', 'beads', crypto.randomUUID()).run()
+
+        beadsRepo = await env.DB.prepare(
+          'SELECT id FROM repos WHERE owner = ? AND name = ?'
+        ).bind('steveyegge', 'beads').first() as { id: number } | null
+      }
+
+      if (beadsRepo) {
+        // Link user to beads repo
+        await env.DB.prepare(
+          'INSERT OR IGNORE INTO user_repos (user_id, repo_id) VALUES (?, ?)'
+        ).bind(user.id, beadsRepo.id).run()
+      }
+    }
   }
 
   // Create session

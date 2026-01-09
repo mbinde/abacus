@@ -6,7 +6,7 @@ interface User {
   github_login: string
   github_name: string | null
   github_avatar_url: string
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
   created_at: string
   last_login_at: string | null
 }
@@ -25,11 +25,29 @@ interface RepoWebhook {
   webhook_configured: boolean
 }
 
+interface ActionLogEntry {
+  id: number
+  user_id: number | null
+  user_login: string | null
+  action: string
+  repo_owner: string
+  repo_name: string
+  issue_id: string | null
+  request_payload: string | null
+  success: number
+  error_message: string | null
+  retry_count: number
+  conflict_detected: number
+  duration_ms: number | null
+  request_id: string | null
+  created_at: string
+}
+
 interface Props {
   onBack: () => void
 }
 
-type Tab = 'users' | 'webhooks'
+type Tab = 'users' | 'webhooks' | 'logs'
 
 export default function AdminPanel({ onBack }: Props) {
   const [users, setUsers] = useState<User[]>([])
@@ -38,6 +56,13 @@ export default function AdminPanel({ onBack }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('users')
+
+  // Action log state
+  const [logEntries, setLogEntries] = useState<ActionLogEntry[]>([])
+  const [logTotal, setLogTotal] = useState(0)
+  const [logLoading, setLogLoading] = useState(false)
+  const [logFilter, setLogFilter] = useState<'all' | 'failures'>('all')
+  const [expandedEntry, setExpandedEntry] = useState<number | null>(null)
 
   useEffect(() => {
     loadData()
@@ -85,6 +110,26 @@ export default function AdminPanel({ onBack }: Props) {
       }
     } catch {
       // Webhooks endpoint might not exist
+    }
+  }
+
+  async function loadActionLog(filter: 'all' | 'failures' = logFilter) {
+    setLogLoading(true)
+    try {
+      const params = new URLSearchParams({ limit: '100' })
+      if (filter === 'failures') {
+        params.set('success', 'false')
+      }
+      const res = await fetch(`/api/admin/action-log?${params}`)
+      if (res.ok) {
+        const data = await res.json() as { entries: ActionLogEntry[]; total: number }
+        setLogEntries(data.entries)
+        setLogTotal(data.total)
+      }
+    } catch {
+      // Action log might not exist yet
+    } finally {
+      setLogLoading(false)
     }
   }
 
@@ -146,7 +191,7 @@ export default function AdminPanel({ onBack }: Props) {
     }
   }
 
-  async function handleRoleChange(userId: number, newRole: 'admin' | 'premium' | 'user') {
+  async function handleRoleChange(userId: number, newRole: 'admin' | 'premium' | 'user' | 'guest') {
     setError(null)
     try {
       const res = await fetch(`/api/admin/users/${userId}`, {
@@ -248,6 +293,19 @@ export default function AdminPanel({ onBack }: Props) {
         >
           Webhooks ({webhooks.filter(w => w.webhook_configured).length}/{webhooks.length})
         </button>
+        <button
+          onClick={() => {
+            setActiveTab('logs')
+            if (logEntries.length === 0) loadActionLog()
+          }}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'logs' ? '#0077cc' : '#2a2a3a',
+            color: activeTab === 'logs' ? 'white' : '#aaa',
+          }}
+        >
+          Action Log
+        </button>
       </div>
 
       {activeTab === 'users' && (
@@ -287,12 +345,13 @@ export default function AdminPanel({ onBack }: Props) {
                     <td>
                       <select
                         value={user.role}
-                        onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'premium' | 'user')}
+                        onChange={(e) => handleRoleChange(user.id, e.target.value as 'admin' | 'premium' | 'user' | 'guest')}
                         style={{ padding: '0.25rem' }}
                       >
                         <option value="admin">Admin</option>
                         <option value="premium">Premium</option>
                         <option value="user">User</option>
+                        <option value="guest">Guest</option>
                       </select>
                     </td>
                     <td style={{ fontSize: '0.875rem' }}>
@@ -394,6 +453,149 @@ export default function AdminPanel({ onBack }: Props) {
                 ))}
               </tbody>
             </table>
+          )}
+        </>
+      )}
+
+      {activeTab === 'logs' && (
+        <>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+            <select
+              value={logFilter}
+              onChange={(e) => {
+                const filter = e.target.value as 'all' | 'failures'
+                setLogFilter(filter)
+                loadActionLog(filter)
+              }}
+              style={{ padding: '0.5rem' }}
+            >
+              <option value="all">All entries</option>
+              <option value="failures">Failures only</option>
+            </select>
+            <button
+              onClick={() => loadActionLog()}
+              style={{ padding: '0.5rem 1rem', background: '#2a2a3a' }}
+            >
+              Refresh
+            </button>
+            <span style={{ color: '#888', fontSize: '0.875rem' }}>
+              {logTotal} total entries
+            </span>
+          </div>
+
+          {logLoading ? (
+            <div className="loading">Loading...</div>
+          ) : logEntries.length === 0 ? (
+            <p style={{ color: '#888' }}>No action log entries yet.</p>
+          ) : (
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '0.5rem' }}>
+              {logEntries.map(entry => (
+                <div
+                  key={entry.id}
+                  style={{
+                    background: '#1a1a24',
+                    border: `1px solid ${entry.success ? '#2a2a3a' : '#662222'}`,
+                    borderRadius: '4px',
+                    padding: '0.75rem',
+                  }}
+                >
+                  <div
+                    style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', cursor: 'pointer' }}
+                    onClick={() => setExpandedEntry(expandedEntry === entry.id ? null : entry.id)}
+                  >
+                    <div style={{ display: 'flex', gap: '0.75rem', alignItems: 'center', flexWrap: 'wrap' }}>
+                      <span
+                        style={{
+                          padding: '0.125rem 0.5rem',
+                          borderRadius: '4px',
+                          fontSize: '0.75rem',
+                          fontWeight: 600,
+                          background: entry.success ? '#1a3a1a' : '#3a1a1a',
+                          color: entry.success ? '#4ade80' : '#f87171',
+                        }}
+                      >
+                        {entry.success ? 'OK' : 'FAIL'}
+                      </span>
+                      <code style={{ fontSize: '0.875rem', color: '#4dc3ff' }}>
+                        {entry.action}
+                      </code>
+                      <span style={{ color: '#888', fontSize: '0.875rem' }}>
+                        {entry.repo_owner}/{entry.repo_name}
+                        {entry.issue_id && <> → {entry.issue_id}</>}
+                      </span>
+                      {entry.user_login && (
+                        <span style={{ color: '#888', fontSize: '0.75rem' }}>
+                          by @{entry.user_login}
+                        </span>
+                      )}
+                    </div>
+                    <div style={{ display: 'flex', gap: '0.5rem', alignItems: 'center' }}>
+                      {entry.conflict_detected === 1 && (
+                        <span
+                          style={{
+                            padding: '0.125rem 0.375rem',
+                            borderRadius: '4px',
+                            fontSize: '0.625rem',
+                            background: '#3a2a1a',
+                            color: '#fbbf24',
+                          }}
+                        >
+                          CONFLICT
+                        </span>
+                      )}
+                      {entry.retry_count > 0 && (
+                        <span style={{ color: '#888', fontSize: '0.75rem' }}>
+                          {entry.retry_count} retries
+                        </span>
+                      )}
+                      <span style={{ color: '#666', fontSize: '0.75rem' }}>
+                        {new Date(entry.created_at).toLocaleString()}
+                      </span>
+                      <span style={{ color: '#666', fontSize: '0.75rem' }}>
+                        {expandedEntry === entry.id ? '▼' : '▶'}
+                      </span>
+                    </div>
+                  </div>
+
+                  {expandedEntry === entry.id && (
+                    <div style={{ marginTop: '0.75rem', paddingTop: '0.75rem', borderTop: '1px solid #2a2a3a' }}>
+                      <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '0.5rem 1rem', fontSize: '0.875rem' }}>
+                        <span style={{ color: '#666' }}>Request ID:</span>
+                        <code style={{ color: '#888' }}>{entry.request_id || '—'}</code>
+
+                        <span style={{ color: '#666' }}>Duration:</span>
+                        <span style={{ color: '#888' }}>{entry.duration_ms ? `${entry.duration_ms}ms` : '—'}</span>
+
+                        {entry.error_message && (
+                          <>
+                            <span style={{ color: '#666' }}>Error:</span>
+                            <span style={{ color: '#f87171' }}>{entry.error_message}</span>
+                          </>
+                        )}
+
+                        {entry.request_payload && (
+                          <>
+                            <span style={{ color: '#666' }}>Payload:</span>
+                            <pre style={{
+                              margin: 0,
+                              padding: '0.5rem',
+                              background: '#0d0d12',
+                              borderRadius: '4px',
+                              overflow: 'auto',
+                              maxHeight: '200px',
+                              fontSize: '0.75rem',
+                              color: '#888',
+                            }}>
+                              {JSON.stringify(JSON.parse(entry.request_payload), null, 2)}
+                            </pre>
+                          </>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           )}
         </>
       )}

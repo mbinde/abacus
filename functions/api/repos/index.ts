@@ -59,6 +59,14 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   const { request, env, data } = context
   const user = (data as { user: UserContext }).user
 
+  // Guest users cannot add repos
+  if (user.role === 'guest') {
+    return new Response(JSON.stringify({ error: 'Guest users cannot add repositories. Contact an administrator to upgrade your account.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
     const { owner, name } = await request.json() as { owner: string; name: string }
 

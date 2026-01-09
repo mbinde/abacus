@@ -26,7 +26,7 @@ interface User {
   login: string
   name: string | null
   avatarUrl: string
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
 }
 
 interface ProfileData {
@@ -44,6 +44,7 @@ interface Props {
 
 export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, onReposChange }: Props) {
   const isPremium = user.role === 'premium' || user.role === 'admin'
+  const isGuest = user.role === 'guest'
   const [showAddForm, setShowAddForm] = useState(false)
   const [repoUrl, setRepoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -519,15 +520,23 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
 
       <div className="flex-between mb-2">
         <h3 style={{ margin: 0, fontSize: '1rem' }}>Repositories ({repos.length})</h3>
-        <button
-          onClick={() => setShowAddForm(!showAddForm)}
-          style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
-        >
-          {showAddForm ? 'Cancel' : 'Add Repo'}
-        </button>
+        {!isGuest && (
+          <button
+            onClick={() => setShowAddForm(!showAddForm)}
+            style={{ fontSize: '0.875rem', padding: '0.375rem 0.75rem' }}
+          >
+            {showAddForm ? 'Cancel' : 'Add Repo'}
+          </button>
+        )}
       </div>
 
-      {showAddForm && (
+      {isGuest && (
+        <div style={{ padding: '0.75rem', background: '#2a2a1a', borderRadius: '4px', marginBottom: '1rem', fontSize: '0.875rem', color: '#f59e0b' }}>
+          Guest accounts can only view the abacus repository. Contact an administrator to upgrade your account.
+        </div>
+      )}
+
+      {showAddForm && !isGuest && (
         <form onSubmit={handleSubmit} className="mb-2">
           <div className="flex">
             <input
@@ -578,14 +587,16 @@ export default function Profile({ user, repos, onBack, onAddRepo, onRemoveRepo, 
                     </span>
                   )}
                 </div>
-                <button
-                  onClick={(e) => { e.stopPropagation(); handleRemove(repo) }}
-                  disabled={loading}
-                  className="btn-danger"
-                  style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
-                >
-                  Remove
-                </button>
+                {!isGuest && (
+                  <button
+                    onClick={(e) => { e.stopPropagation(); handleRemove(repo) }}
+                    disabled={loading}
+                    className="btn-danger"
+                    style={{ fontSize: '0.75rem', padding: '0.25rem 0.5rem' }}
+                  >
+                    Remove
+                  </button>
+                )}
               </div>
               {renderRepoDrawer(repo)}
             </div>

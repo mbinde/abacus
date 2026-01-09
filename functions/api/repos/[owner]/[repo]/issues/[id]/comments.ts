@@ -1,6 +1,7 @@
 // /api/repos/:owner/:repo/issues/:id/comments - Add comments to issues
 
 import type { UserContext } from '../../../../../_middleware'
+import { logAction, startTimer, generateRequestId } from '../../../../../../lib/action-log'
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -38,17 +39,22 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 100
 
 // POST /api/repos/:owner/:repo/issues/:id/comments - Add a comment
-export const onRequestPost: PagesFunction = async (context) => {
-  const { request, params, data } = context
+export const onRequestPost: PagesFunction<{ DB?: D1Database }> = async (context) => {
+  const { request, params, data, env } = context
   const user = (data as { user: UserContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
   const issueId = params.id as string
 
+  const timer = startTimer()
+  const requestId = generateRequestId()
+  let commentText = ''
+
   try {
     const body = await request.json() as { text: string }
+    commentText = body.text?.trim() || ''
 
-    if (!body.text?.trim()) {
+    if (!commentText) {
       return new Response(JSON.stringify({ error: 'Comment text is required' }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
@@ -61,15 +67,45 @@ export const onRequestPost: PagesFunction = async (context) => {
       owner,
       repo,
       issueId,
-      body.text.trim()
+      commentText
     )
 
     if (!result.success) {
+      await logAction(env.DB ?? null, {
+        userId: user.id,
+        userLogin: user.github_login,
+        action: 'add_comment',
+        repoOwner: owner,
+        repoName: repo,
+        issueId,
+        requestPayload: { text: commentText },
+        success: false,
+        errorMessage: result.error,
+        retryCount: result.retryCount,
+        conflictDetected: result.conflictDetected,
+        durationMs: timer(),
+        requestId,
+      })
       return new Response(JSON.stringify({ error: result.error }), {
         status: result.notFound ? 404 : 500,
         headers: { 'Content-Type': 'application/json' },
       })
     }
+
+    await logAction(env.DB ?? null, {
+      userId: user.id,
+      userLogin: user.github_login,
+      action: 'add_comment',
+      repoOwner: owner,
+      repoName: repo,
+      issueId,
+      requestPayload: { text: commentText },
+      success: true,
+      retryCount: result.retryCount,
+      conflictDetected: result.conflictDetected,
+      durationMs: timer(),
+      requestId,
+    })
 
     return new Response(JSON.stringify({ comment: result.comment }), {
       status: 201,
@@ -77,11 +113,33 @@ export const onRequestPost: PagesFunction = async (context) => {
     })
   } catch (err) {
     console.error('Error adding comment:', err)
+    await logAction(env.DB ?? null, {
+      userId: user.id,
+      userLogin: user.github_login,
+      action: 'add_comment',
+      repoOwner: owner,
+      repoName: repo,
+      issueId,
+      requestPayload: { text: commentText },
+      success: false,
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+      durationMs: timer(),
+      requestId,
+    })
     return new Response(JSON.stringify({ error: 'Failed to add comment' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
   }
+}
+
+interface CommentResult {
+  success: boolean
+  error?: string
+  notFound?: boolean
+  comment?: Comment
+  retryCount?: number
+  conflictDetected?: boolean
 }
 
 async function addCommentWithMerge(
@@ -91,7 +149,9 @@ async function addCommentWithMerge(
   repo: string,
   issueId: string,
   text: string
-): Promise<{ success: boolean; error?: string; notFound?: boolean; comment?: Comment }> {
+): Promise<CommentResult> {
+  let conflictDetected = false
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // Fetch current state
     const res = await fetch(
@@ -106,7 +166,7 @@ async function addCommentWithMerge(
     )
 
     if (!res.ok) {
-      return { success: false, error: 'Failed to fetch issues file' }
+      return { success: false, error: 'Failed to fetch issues file', retryCount: attempt }
     }
 
     const data = await res.json() as { content: string; sha: string }
@@ -125,7 +185,7 @@ async function addCommentWithMerge(
     // Find the issue
     const issue = issueMap.get(issueId)
     if (!issue) {
-      return { success: false, error: 'Issue not found', notFound: true }
+      return { success: false, error: 'Issue not found', notFound: true, retryCount: attempt }
     }
 
     // Generate new comment ID (max existing + 1)
@@ -170,11 +230,12 @@ async function addCommentWithMerge(
     )
 
     if (writeRes.ok) {
-      return { success: true, comment: newComment }
+      return { success: true, comment: newComment, retryCount: attempt, conflictDetected }
     }
 
     const status = writeRes.status
     if (status === 409 || status === 422) {
+      conflictDetected = true
       if (attempt < MAX_RETRIES) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt)
         await new Promise(resolve => setTimeout(resolve, delay))
@@ -188,10 +249,12 @@ async function addCommentWithMerge(
       error: attempt >= MAX_RETRIES
         ? `Failed after ${MAX_RETRIES + 1} attempts due to concurrent modifications.`
         : errData.message || 'Failed to add comment',
+      retryCount: attempt,
+      conflictDetected,
     }
   }
 
-  return { success: false, error: 'Failed after retries' }
+  return { success: false, error: 'Failed after retries', retryCount: MAX_RETRIES, conflictDetected }
 }
 
 function normalizeIssue(obj: Record<string, unknown>): Issue {

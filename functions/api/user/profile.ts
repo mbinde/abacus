@@ -13,7 +13,7 @@ interface UserProfile {
   github_avatar_url: string
   email: string | null
   email_notifications: boolean
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
 }
 
 // GET /api/user/profile - Get current user's profile

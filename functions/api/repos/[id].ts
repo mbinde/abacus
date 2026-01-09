@@ -12,6 +12,14 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
   const user = (data as { user: UserContext }).user
   const repoId = params.id as string
 
+  // Guest users cannot remove repos
+  if (user.role === 'guest') {
+    return new Response(JSON.stringify({ error: 'Guest users cannot remove repositories.' }), {
+      status: 403,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
   try {
     // Verify the user has this repo linked
     const existing = await env.DB.prepare(

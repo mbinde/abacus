@@ -30,7 +30,7 @@ export interface UserContext {
   id: number
   githubId: number
   login: string
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
   githubToken: string
 }
 

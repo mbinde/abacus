@@ -153,7 +153,7 @@ export class SQLiteDatabase implements Database {
     )
   }
 
-  async updateUserRole(userId: number, role: 'admin' | 'premium' | 'user'): Promise<void> {
+  async updateUserRole(userId: number, role: 'admin' | 'premium' | 'user' | 'guest'): Promise<void> {
     this.driver.run('UPDATE users SET role = ? WHERE id = ?', [role, userId])
   }
 

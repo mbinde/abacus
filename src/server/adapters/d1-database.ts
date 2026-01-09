@@ -154,7 +154,7 @@ export class D1Database implements Database {
     ).bind(email, emailNotifications ? 1 : 0, userId).run()
   }
 
-  async updateUserRole(userId: number, role: 'admin' | 'premium' | 'user'): Promise<void> {
+  async updateUserRole(userId: number, role: 'admin' | 'premium' | 'user' | 'guest'): Promise<void> {
     await this.db.prepare(
       'UPDATE users SET role = ? WHERE id = ?'
     ).bind(role, userId).run()

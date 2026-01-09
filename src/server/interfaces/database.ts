@@ -8,7 +8,7 @@ export interface User {
   github_name: string | null
   github_avatar_url: string | null
   github_token_encrypted: string
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
   email: string | null
   email_notifications: number
   created_at: string
@@ -62,7 +62,7 @@ export interface Database {
   createUser(user: Omit<User, 'id' | 'created_at' | 'last_login_at'>): Promise<User>
   updateUser(githubId: number, updates: Partial<User>): Promise<void>
   updateUserProfile(userId: number, email: string | null, emailNotifications: boolean): Promise<void>
-  updateUserRole(userId: number, role: 'admin' | 'premium' | 'user'): Promise<void>
+  updateUserRole(userId: number, role: 'admin' | 'premium' | 'user' | 'guest'): Promise<void>
   deleteUser(userId: number): Promise<void>
   listUsers(): Promise<User[]>
 

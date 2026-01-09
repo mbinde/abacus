@@ -49,7 +49,7 @@ interface User {
   login: string
   name: string | null
   avatarUrl: string
-  role: 'admin' | 'premium' | 'user'
+  role: 'admin' | 'premium' | 'user' | 'guest'
 }
 
 type View = 'list' | 'create' | 'edit' | 'issue' | 'admin' | 'profile' | 'executors' | 'activity' | 'dashboard'

@@ -1,6 +1,7 @@
 // /api/repos/:owner/:repo/issues/:id - Update and delete issues
 
 import type { UserContext } from '../../../../_middleware'
+import { logAction, startTimer, generateRequestId } from '../../../../../lib/action-log'
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -32,15 +33,19 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 100
 
 // PUT /api/repos/:owner/:repo/issues/:id - Update an issue
-export const onRequestPut: PagesFunction = async (context) => {
-  const { request, params, data } = context
+export const onRequestPut: PagesFunction<{ DB?: D1Database }> = async (context) => {
+  const { request, params, data, env } = context
   const user = (data as { user: UserContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
   const issueId = params.id as string
 
+  const timer = startTimer()
+  const requestId = generateRequestId()
+  let reqData: Partial<Issue> = {}
+
   try {
-    const reqData = await request.json() as Partial<Issue>
+    reqData = await request.json() as Partial<Issue>
 
     // Check if using JSONL or markdown format
     const formatCheck = await fetch(
@@ -59,21 +64,81 @@ export const onRequestPut: PagesFunction = async (context) => {
       const result = await updateIssueWithMerge(user.githubToken, owner, repo, issueId, reqData)
       if (!result.success) {
         const status = result.notFound ? 404 : 500
+        await logAction(env.DB ?? null, {
+          userId: user.id,
+          userLogin: user.github_login,
+          action: 'update_issue',
+          repoOwner: owner,
+          repoName: repo,
+          issueId,
+          requestPayload: reqData,
+          success: false,
+          errorMessage: result.error,
+          retryCount: result.retryCount,
+          conflictDetected: result.conflictDetected,
+          durationMs: timer(),
+          requestId,
+        })
         return new Response(JSON.stringify({ error: result.error }), {
           status,
           headers: { 'Content-Type': 'application/json' },
         })
       }
+      // Log success
+      await logAction(env.DB ?? null, {
+        userId: user.id,
+        userLogin: user.github_login,
+        action: 'update_issue',
+        repoOwner: owner,
+        repoName: repo,
+        issueId,
+        requestPayload: reqData,
+        success: true,
+        retryCount: result.retryCount,
+        conflictDetected: result.conflictDetected,
+        durationMs: timer(),
+        requestId,
+      })
     } else {
       // Markdown format - use merge-on-conflict for individual file
       const result = await updateMarkdownIssueWithMerge(user.githubToken, owner, repo, issueId, reqData)
       if (!result.success) {
         const status = result.notFound ? 404 : 500
+        await logAction(env.DB ?? null, {
+          userId: user.id,
+          userLogin: user.github_login,
+          action: 'update_issue',
+          repoOwner: owner,
+          repoName: repo,
+          issueId,
+          requestPayload: reqData,
+          success: false,
+          errorMessage: result.error,
+          retryCount: result.retryCount,
+          conflictDetected: result.conflictDetected,
+          durationMs: timer(),
+          requestId,
+        })
         return new Response(JSON.stringify({ error: result.error }), {
           status,
           headers: { 'Content-Type': 'application/json' },
         })
       }
+      // Log success
+      await logAction(env.DB ?? null, {
+        userId: user.id,
+        userLogin: user.github_login,
+        action: 'update_issue',
+        repoOwner: owner,
+        repoName: repo,
+        issueId,
+        requestPayload: reqData,
+        success: true,
+        retryCount: result.retryCount,
+        conflictDetected: result.conflictDetected,
+        durationMs: timer(),
+        requestId,
+      })
     }
 
     return new Response(JSON.stringify({ success: true }), {
@@ -82,11 +147,32 @@ export const onRequestPut: PagesFunction = async (context) => {
     })
   } catch (err) {
     console.error('Error updating issue:', err)
+    await logAction(env.DB ?? null, {
+      userId: user.id,
+      userLogin: user.github_login,
+      action: 'update_issue',
+      repoOwner: owner,
+      repoName: repo,
+      issueId,
+      requestPayload: reqData,
+      success: false,
+      errorMessage: err instanceof Error ? err.message : 'Unknown error',
+      durationMs: timer(),
+      requestId,
+    })
     return new Response(JSON.stringify({ error: 'Failed to update issue' }), {
       status: 500,
       headers: { 'Content-Type': 'application/json' },
     })
   }
+}
+
+interface UpdateResult {
+  success: boolean
+  error?: string
+  notFound?: boolean
+  retryCount?: number
+  conflictDetected?: boolean
 }
 
 // Update issue in JSONL with merge-on-conflict and retry
@@ -96,7 +182,9 @@ async function updateIssueWithMerge(
   repo: string,
   issueId: string,
   updates: Partial<Issue>
-): Promise<{ success: boolean; error?: string; notFound?: boolean }> {
+): Promise<UpdateResult> {
+  let conflictDetected = false
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // Fetch current state
     const res = await fetch(
@@ -111,7 +199,7 @@ async function updateIssueWithMerge(
     )
 
     if (!res.ok) {
-      return { success: false, error: 'Failed to fetch issues file' }
+      return { success: false, error: 'Failed to fetch issues file', retryCount: attempt }
     }
 
     const data = await res.json() as { content: string; sha: string }
@@ -130,7 +218,7 @@ async function updateIssueWithMerge(
     // Find and update the issue
     const existing = issueMap.get(issueId)
     if (!existing) {
-      return { success: false, error: 'Issue not found', notFound: true }
+      return { success: false, error: 'Issue not found', notFound: true, retryCount: attempt }
     }
 
     const updated: Issue = {
@@ -173,12 +261,13 @@ async function updateIssueWithMerge(
     )
 
     if (writeRes.ok) {
-      return { success: true }
+      return { success: true, retryCount: attempt, conflictDetected }
     }
 
     // Check if it's a conflict (409) or SHA mismatch (422)
     const status = writeRes.status
     if (status === 409 || status === 422) {
+      conflictDetected = true
       // Conflict - retry with exponential backoff
       if (attempt < MAX_RETRIES) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt)
@@ -194,12 +283,16 @@ async function updateIssueWithMerge(
       error: attempt >= MAX_RETRIES
         ? `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`
         : errData.message || 'Failed to save issue',
+      retryCount: attempt,
+      conflictDetected,
     }
   }
 
   return {
     success: false,
     error: `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`,
+    retryCount: MAX_RETRIES,
+    conflictDetected,
   }
 }
 
@@ -210,7 +303,9 @@ async function updateMarkdownIssueWithMerge(
   repo: string,
   issueId: string,
   updates: Partial<Issue>
-): Promise<{ success: boolean; error?: string; notFound?: boolean }> {
+): Promise<UpdateResult> {
+  let conflictDetected = false
+
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
     // Fetch current state
     const res = await fetch(
@@ -226,9 +321,9 @@ async function updateMarkdownIssueWithMerge(
 
     if (!res.ok) {
       if (res.status === 404) {
-        return { success: false, error: 'Issue not found', notFound: true }
+        return { success: false, error: 'Issue not found', notFound: true, retryCount: attempt }
       }
-      return { success: false, error: 'Failed to fetch issue file' }
+      return { success: false, error: 'Failed to fetch issue file', retryCount: attempt }
     }
 
     const data = await res.json() as { content: string; sha: string }
@@ -264,12 +359,13 @@ async function updateMarkdownIssueWithMerge(
     )
 
     if (writeRes.ok) {
-      return { success: true }
+      return { success: true, retryCount: attempt, conflictDetected }
     }
 
     // Check if it's a conflict (409) or SHA mismatch (422)
     const status = writeRes.status
     if (status === 409 || status === 422) {
+      conflictDetected = true
       // Conflict - retry with exponential backoff
       if (attempt < MAX_RETRIES) {
         const delay = BASE_DELAY_MS * Math.pow(2, attempt)
@@ -285,12 +381,16 @@ async function updateMarkdownIssueWithMerge(
       error: attempt >= MAX_RETRIES
         ? `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`
         : errData.message || 'Failed to save issue',
+      retryCount: attempt,
+      conflictDetected,
     }
   }
 
   return {
     success: false,
     error: `Failed to save issue after ${MAX_RETRIES + 1} attempts due to concurrent modifications. Please try again.`,
+    retryCount: MAX_RETRIES,
+    conflictDetected,
   }
 }
 
