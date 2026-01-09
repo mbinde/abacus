@@ -709,6 +709,59 @@ export default function AdminPanel({ onBack }: Props) {
           )}
         </>
       )}
+
+      {activeTab === 'analytics' && (
+        <>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'center', marginBottom: '1rem' }}>
+            <button
+              onClick={() => loadAnalytics()}
+              style={{ padding: '0.5rem 1rem', background: '#2a2a3a' }}
+            >
+              Refresh
+            </button>
+            <span style={{ color: '#888', fontSize: '0.875rem' }}>
+              Total views: <strong style={{ color: '#4dc3ff' }}>{totalViews.toLocaleString()}</strong>
+            </span>
+          </div>
+
+          {analyticsLoading ? (
+            <div className="loading">Loading...</div>
+          ) : repoViews.length === 0 ? (
+            <p style={{ color: '#888' }}>No repo views recorded yet.</p>
+          ) : (
+            <table>
+              <thead>
+                <tr>
+                  <th>Repository</th>
+                  <th style={{ textAlign: 'right' }}>Views</th>
+                  <th>Last Viewed</th>
+                  <th>First Viewed</th>
+                </tr>
+              </thead>
+              <tbody>
+                {repoViews.map((stat) => (
+                  <tr key={`${stat.repo_owner}/${stat.repo_name}`}>
+                    <td>
+                      <code style={{ fontSize: '0.875rem' }}>
+                        {stat.repo_owner}/{stat.repo_name}
+                      </code>
+                    </td>
+                    <td style={{ textAlign: 'right', fontWeight: 600, color: '#4dc3ff' }}>
+                      {stat.view_count.toLocaleString()}
+                    </td>
+                    <td style={{ fontSize: '0.875rem', color: '#888' }}>
+                      {stat.last_viewed_at ? new Date(stat.last_viewed_at).toLocaleString() : '—'}
+                    </td>
+                    <td style={{ fontSize: '0.875rem', color: '#888' }}>
+                      {new Date(stat.created_at).toLocaleDateString()}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          )}
+        </>
+      )}
     </div>
   )
 }
