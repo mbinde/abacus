@@ -1,6 +1,7 @@
 // /api/repos - List and add repositories (scoped to user)
 
 import type { UserContext } from '../_middleware'
+import { validateRepoOwner, validateRepoName } from '../../lib/validation'
 
 interface Env {
   DB: D1Database
@@ -70,8 +71,17 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     const { owner, name } = await request.json() as { owner: string; name: string }
 
-    if (!owner || !name) {
-      return new Response(JSON.stringify({ error: 'owner and name are required' }), {
+    // Validate inputs
+    const ownerValidation = validateRepoOwner(owner)
+    if (!ownerValidation.valid) {
+      return new Response(JSON.stringify({ error: ownerValidation.error }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+    const nameValidation = validateRepoName(name)
+    if (!nameValidation.valid) {
+      return new Response(JSON.stringify({ error: nameValidation.error }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
@@ -145,6 +155,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     })
   } catch (err) {
     const error = err as Error
+    // Log details server-side but return generic message
+    console.error('Error adding repository:', error)
+
     if (error.message?.includes('UNIQUE constraint')) {
       return new Response(JSON.stringify({ error: 'Repository already added' }), {
         status: 409,

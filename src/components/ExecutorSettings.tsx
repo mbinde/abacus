@@ -1,4 +1,7 @@
 import { useState, useEffect, FormEvent } from 'react'
+import ExecutorHelp, { LabelPollInlineHelp, WebhookInlineHelp } from './ExecutorHelp'
+
+// ExecutorHelp is used in the main component for the Setup Guide button
 
 interface Executor {
   name: string
@@ -20,6 +23,7 @@ export default function ExecutorSettings({ repoOwner, repoName, onBack }: Props)
   const [error, setError] = useState<string | null>(null)
   const [editing, setEditing] = useState<Executor | null>(null)
   const [isNew, setIsNew] = useState(false)
+  const [showHelp, setShowHelp] = useState(false)
 
   useEffect(() => {
     loadExecutors()
@@ -114,8 +118,22 @@ export default function ExecutorSettings({ repoOwner, repoName, onBack }: Props)
 
   return (
     <div>
+      {showHelp && <ExecutorHelp onClose={() => setShowHelp(false)} />}
+
       <div className="flex-between mb-3">
-        <h2>Executors</h2>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '0.75rem' }}>
+          <h2 style={{ margin: 0 }}>Executors</h2>
+          <button
+            onClick={() => setShowHelp(true)}
+            style={{
+              background: '#444',
+              padding: '0.25rem 0.5rem',
+              fontSize: '0.8rem',
+            }}
+          >
+            Setup Guide
+          </button>
+        </div>
         <div className="flex">
           <button onClick={onBack} style={{ background: '#444' }}>
             Back
@@ -130,8 +148,12 @@ export default function ExecutorSettings({ repoOwner, repoName, onBack }: Props)
 
       {executors.length === 0 ? (
         <div className="card">
-          <p style={{ color: '#888' }}>
+          <p style={{ color: '#888', marginBottom: '0.75rem' }}>
             No executors configured. Executors let you dispatch issues to agents for autonomous implementation.
+          </p>
+          <p style={{ color: '#888', fontSize: '0.875rem' }}>
+            <strong>Label Poll:</strong> Adds a label to dispatched issues. Your agent uses <code>bd list --label=LABEL</code> to find work.<br />
+            <strong>Webhook:</strong> POSTs issue details to your endpoint when dispatched.
           </p>
         </div>
       ) : (
@@ -229,50 +251,58 @@ function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
         </div>
 
         <div className="mb-2">
-          <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-            Type
-          </label>
-          <select value={type} onChange={(e) => setType(e.target.value as 'label-poll' | 'webhook')}>
-            <option value="label-poll">Label Poll</option>
-            <option value="webhook">Webhook</option>
-          </select>
+          <div style={{ display: 'flex', gap: '1rem', alignItems: 'flex-start' }}>
+            <div style={{ flexShrink: 0 }}>
+              <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                Type
+              </label>
+              <select
+                value={type}
+                onChange={(e) => setType(e.target.value as 'label-poll' | 'webhook')}
+                style={{ width: 'auto', minWidth: '140px' }}
+              >
+                <option value="label-poll">Label Poll</option>
+                <option value="webhook">Webhook</option>
+              </select>
+            </div>
+
+            {type === 'label-poll' && (
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                  Label
+                </label>
+                <input
+                  type="text"
+                  value={label}
+                  onChange={(e) => setLabel(e.target.value)}
+                  placeholder="e.g., exec:home-mac"
+                  required
+                />
+                <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  This label is added to the issue when dispatched. Your agent can use <code>bd list --label=LABEL</code> to find dispatched work.
+                </div>
+              </div>
+            )}
+
+            {type === 'webhook' && (
+              <div style={{ flex: 1 }}>
+                <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
+                  Endpoint URL
+                </label>
+                <input
+                  type="url"
+                  value={endpoint}
+                  onChange={(e) => setEndpoint(e.target.value)}
+                  placeholder="https://your-server.com/dispatch"
+                  required
+                />
+                <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
+                  Abacus will POST to this URL when dispatching issues.
+                </div>
+              </div>
+            )}
+          </div>
         </div>
-
-        {type === 'label-poll' && (
-          <div className="mb-2">
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-              Label
-            </label>
-            <input
-              type="text"
-              value={label}
-              onChange={(e) => setLabel(e.target.value)}
-              placeholder="e.g., exec:home-mac"
-              required
-            />
-            <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-              This label will be added to issues when dispatched. Your polling agent should watch for this label.
-            </div>
-          </div>
-        )}
-
-        {type === 'webhook' && (
-          <div className="mb-2">
-            <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
-              Endpoint URL
-            </label>
-            <input
-              type="url"
-              value={endpoint}
-              onChange={(e) => setEndpoint(e.target.value)}
-              placeholder="https://your-server.com/dispatch"
-              required
-            />
-            <div style={{ color: '#888', fontSize: '0.75rem', marginTop: '0.25rem' }}>
-              Abacus will POST to this URL when dispatching issues.
-            </div>
-          </div>
-        )}
 
         <div className="mb-2">
           <label style={{ display: 'block', marginBottom: '0.25rem', fontWeight: 600 }}>
@@ -284,6 +314,11 @@ function ExecutorForm({ executor, isNew, onSave, onCancel, error }: FormProps) {
             onChange={(e) => setDescription(e.target.value)}
             placeholder="e.g., My home MacBook"
           />
+        </div>
+
+        <div style={{ marginBottom: '1rem' }}>
+          {type === 'label-poll' && <LabelPollInlineHelp label={label} />}
+          {type === 'webhook' && <WebhookInlineHelp />}
         </div>
 
         <div className="flex" style={{ justifyContent: 'flex-end' }}>

@@ -146,6 +146,19 @@ interface UserWithEmail {
   notify_actions: string | null
 }
 
+// Constant-time string comparison to prevent timing attacks
+function timingSafeEqual(a: string, b: string): boolean {
+  if (a.length !== b.length) return false
+  const encoder = new TextEncoder()
+  const aBytes = encoder.encode(a)
+  const bBytes = encoder.encode(b)
+  let result = 0
+  for (let i = 0; i < aBytes.length; i++) {
+    result |= aBytes[i] ^ bBytes[i]
+  }
+  return result === 0
+}
+
 // Verify GitHub webhook signature
 async function verifySignature(
   payload: string,
@@ -168,7 +181,7 @@ async function verifySignature(
     .map(b => b.toString(16).padStart(2, '0'))
     .join('')
 
-  return signature === expectedSignature
+  return timingSafeEqual(signature, expectedSignature)
 }
 
 // Simple hash for comparing issue states

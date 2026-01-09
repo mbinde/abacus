@@ -38,6 +38,67 @@ const ISSUES_PATH = '.beads/issues.jsonl'
 const MAX_RETRIES = 3
 const BASE_DELAY_MS = 100
 
+// Blocked IP ranges (RFC1918, loopback, link-local, etc.)
+const BLOCKED_IP_PATTERNS = [
+  /^127\./,                    // Loopback
+  /^10\./,                     // Private Class A
+  /^172\.(1[6-9]|2[0-9]|3[0-1])\./, // Private Class B
+  /^192\.168\./,               // Private Class C
+  /^169\.254\./,               // Link-local
+  /^0\./,                      // Current network
+  /^100\.(6[4-9]|[7-9][0-9]|1[0-1][0-9]|12[0-7])\./, // Carrier-grade NAT
+  /^::1$/,                     // IPv6 loopback
+  /^fc00:/i,                   // IPv6 private
+  /^fe80:/i,                   // IPv6 link-local
+]
+
+// Validate webhook URL is safe (not pointing to internal services)
+function isUrlSafe(urlString: string): { safe: boolean; reason?: string } {
+  try {
+    const url = new URL(urlString)
+
+    // Must be HTTPS
+    if (url.protocol !== 'https:') {
+      return { safe: false, reason: 'Webhook endpoints must use HTTPS' }
+    }
+
+    // Block localhost and common internal hostnames
+    const hostname = url.hostname.toLowerCase()
+    if (hostname === 'localhost' ||
+        hostname === '127.0.0.1' ||
+        hostname === '::1' ||
+        hostname.endsWith('.local') ||
+        hostname.endsWith('.internal') ||
+        hostname.endsWith('.localhost')) {
+      return { safe: false, reason: 'Webhook endpoints cannot target localhost or internal hosts' }
+    }
+
+    // Check if hostname looks like an IP address
+    const ipv4Match = hostname.match(/^(\d{1,3})\.(\d{1,3})\.(\d{1,3})\.(\d{1,3})$/)
+    if (ipv4Match) {
+      for (const pattern of BLOCKED_IP_PATTERNS) {
+        if (pattern.test(hostname)) {
+          return { safe: false, reason: 'Webhook endpoints cannot target private IP addresses' }
+        }
+      }
+    }
+
+    // Block IPv6 addresses in brackets
+    if (hostname.startsWith('[') && hostname.endsWith(']')) {
+      const ipv6 = hostname.slice(1, -1)
+      for (const pattern of BLOCKED_IP_PATTERNS) {
+        if (pattern.test(ipv6)) {
+          return { safe: false, reason: 'Webhook endpoints cannot target private IP addresses' }
+        }
+      }
+    }
+
+    return { safe: true }
+  } catch {
+    return { safe: false, reason: 'Invalid URL' }
+  }
+}
+
 // POST /api/repos/:owner/:repo/executors/:name/dispatch
 export const onRequestPost: PagesFunction = async (context) => {
   const { request, params, data } = context
@@ -92,6 +153,15 @@ export const onRequestPost: PagesFunction = async (context) => {
       })
 
     } else if (executor.type === 'webhook') {
+      // Validate webhook URL is safe (SSRF protection)
+      const urlCheck = isUrlSafe(executor.endpoint!)
+      if (!urlCheck.safe) {
+        return new Response(JSON.stringify({ error: urlCheck.reason }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+
       // Get issue details for webhook payload
       const issue = await fetchIssue(user.githubToken, owner, repo, reqData.issue_id)
       if (!issue) {
@@ -101,26 +171,44 @@ export const onRequestPost: PagesFunction = async (context) => {
         })
       }
 
-      // POST to webhook endpoint
-      const webhookRes = await fetch(executor.endpoint!, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'User-Agent': 'abacus',
-        },
-        body: JSON.stringify({
-          action: 'dispatch',
-          issue_id: reqData.issue_id,
-          repo: `${owner}/${repo}`,
-          issue: {
-            id: issue.id,
-            title: issue.title,
-            description: issue.description,
-            status: issue.status,
-            priority: issue.priority,
+      // POST to webhook endpoint with timeout
+      const controller = new AbortController()
+      const timeoutId = setTimeout(() => controller.abort(), 10000) // 10 second timeout
+
+      let webhookRes: Response
+      try {
+        webhookRes = await fetch(executor.endpoint!, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'User-Agent': 'abacus',
           },
-        }),
-      })
+          body: JSON.stringify({
+            action: 'dispatch',
+            issue_id: reqData.issue_id,
+            repo: `${owner}/${repo}`,
+            issue: {
+              id: issue.id,
+              title: issue.title,
+              description: issue.description,
+              status: issue.status,
+              priority: issue.priority,
+            },
+          }),
+          signal: controller.signal,
+        })
+      } catch (err) {
+        clearTimeout(timeoutId)
+        if (err instanceof Error && err.name === 'AbortError') {
+          return new Response(JSON.stringify({ error: 'Webhook request timed out' }), {
+            status: 504,
+            headers: { 'Content-Type': 'application/json' },
+          })
+        }
+        throw err
+      } finally {
+        clearTimeout(timeoutId)
+      }
 
       if (!webhookRes.ok) {
         return new Response(JSON.stringify({

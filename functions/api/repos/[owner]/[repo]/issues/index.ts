@@ -1,6 +1,16 @@
 // /api/repos/:owner/:repo/issues - List and create issues
 
 import type { UserContext, AnonymousContext } from '../../../../_middleware'
+import { validateRepoAccess, isAnonymous } from '../../../../../lib/repo-access'
+import {
+  validateRepoOwner,
+  validateRepoName,
+  validateIssueTitle,
+  validateIssueDescription,
+  validateIssueStatus,
+  validateIssuePriority,
+  validateIssueType,
+} from '../../../../../lib/validation'
 
 interface Env {
   DB: D1Database
@@ -36,11 +46,6 @@ async function incrementViewCount(env: Env, owner: string, repo: string): Promis
   } catch {
     // Silently fail - view counting is not critical
   }
-}
-
-// Helper to check if user is anonymous
-function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
-  return 'anonymous' in user && user.anonymous === true
 }
 
 // Helper to build GitHub API headers
@@ -99,6 +104,26 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
+
+  // Validate path parameters
+  const ownerValidation = validateRepoOwner(owner)
+  if (!ownerValidation.valid) {
+    return new Response(JSON.stringify({ error: ownerValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const repoValidation = validateRepoName(repo)
+  if (!repoValidation.valid) {
+    return new Response(JSON.stringify({ error: repoValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Validate repo access (allow anonymous for demo repo read-only)
+  const accessDenied = await validateRepoAccess(env, user, owner, repo, false)
+  if (accessDenied) return accessDenied
 
   // Increment view counter (non-blocking)
   incrementViewCount(env, owner, repo)
@@ -232,8 +257,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 }
 
 // POST /api/repos/:owner/:repo/issues - Create a new issue
-export const onRequestPost: PagesFunction = async (context) => {
-  const { request, params, data } = context
+export const onRequestPost: PagesFunction<Env> = async (context) => {
+  const { request, params, data, env } = context
   const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
@@ -253,14 +278,78 @@ export const onRequestPost: PagesFunction = async (context) => {
     })
   }
 
+  // Validate path parameters
+  const ownerValidation = validateRepoOwner(owner)
+  if (!ownerValidation.valid) {
+    return new Response(JSON.stringify({ error: ownerValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+  const repoValidation = validateRepoName(repo)
+  if (!repoValidation.valid) {
+    return new Response(JSON.stringify({ error: repoValidation.error }), {
+      status: 400,
+      headers: { 'Content-Type': 'application/json' },
+    })
+  }
+
+  // Validate repo access
+  const accessDenied = await validateRepoAccess(env, user, owner, repo, true)
+  if (accessDenied) return accessDenied
+
   try {
     const reqData = await request.json() as Partial<Issue>
 
-    if (!reqData.title) {
-      return new Response(JSON.stringify({ error: 'title is required' }), {
+    // Validate issue title
+    const titleValidation = validateIssueTitle(reqData.title || '')
+    if (!titleValidation.valid) {
+      return new Response(JSON.stringify({ error: titleValidation.error }), {
         status: 400,
         headers: { 'Content-Type': 'application/json' },
       })
+    }
+
+    // Validate issue description
+    const descValidation = validateIssueDescription(reqData.description)
+    if (!descValidation.valid) {
+      return new Response(JSON.stringify({ error: descValidation.error }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Validate status if provided
+    if (reqData.status) {
+      const statusValidation = validateIssueStatus(reqData.status)
+      if (!statusValidation.valid) {
+        return new Response(JSON.stringify({ error: statusValidation.error }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // Validate priority if provided
+    if (reqData.priority !== undefined) {
+      const priorityValidation = validateIssuePriority(reqData.priority)
+      if (!priorityValidation.valid) {
+        return new Response(JSON.stringify({ error: priorityValidation.error }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
+    }
+
+    // Validate issue type if provided
+    if (reqData.issue_type) {
+      const typeValidation = validateIssueType(reqData.issue_type)
+      if (!typeValidation.valid) {
+        return new Response(JSON.stringify({ error: typeValidation.error }), {
+          status: 400,
+          headers: { 'Content-Type': 'application/json' },
+        })
+      }
     }
 
     // Generate ID
@@ -269,7 +358,7 @@ export const onRequestPost: PagesFunction = async (context) => {
 
     const issue: Issue = {
       id,
-      title: reqData.title,
+      title: reqData.title!,  // Already validated above
       description: reqData.description || '',
       status: reqData.status || 'open',
       priority: reqData.priority || 3,

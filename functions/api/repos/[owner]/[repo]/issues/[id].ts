@@ -2,11 +2,7 @@
 
 import type { UserContext, AnonymousContext } from '../../../../_middleware'
 import { logAction, startTimer, generateRequestId } from '../../../../../lib/action-log'
-
-// Helper to check if user is anonymous
-function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
-  return 'anonymous' in user && user.anonymous === true
-}
+import { validateRepoAccess, isAnonymous } from '../../../../../lib/repo-access'
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -38,7 +34,7 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 100
 
 // PUT /api/repos/:owner/:repo/issues/:id - Update an issue
-export const onRequestPut: PagesFunction<{ DB?: D1Database }> = async (context) => {
+export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) => {
   const { request, params, data, env } = context
   const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
@@ -59,6 +55,10 @@ export const onRequestPut: PagesFunction<{ DB?: D1Database }> = async (context) 
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // Validate repo access
+  const accessDenied = await validateRepoAccess(env, user, owner, repo, true)
+  if (accessDenied) return accessDenied
 
   const timer = startTimer()
   const requestId = generateRequestId()
@@ -415,8 +415,8 @@ async function updateMarkdownIssueWithMerge(
 }
 
 // DELETE /api/repos/:owner/:repo/issues/:id - Delete an issue
-export const onRequestDelete: PagesFunction = async (context) => {
-  const { params, data } = context
+export const onRequestDelete: PagesFunction<{ DB: D1Database }> = async (context) => {
+  const { params, data, env } = context
   const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
@@ -436,6 +436,10 @@ export const onRequestDelete: PagesFunction = async (context) => {
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // Validate repo access
+  const accessDenied = await validateRepoAccess(env, user, owner, repo, true)
+  if (accessDenied) return accessDenied
 
   try {
     // For JSONL format, we add to deletions.jsonl rather than modifying issues.jsonl

@@ -1,11 +1,7 @@
 // /api/repos/:owner/:repo/issues/bulk - Bulk update issues
 
 import type { UserContext, AnonymousContext } from '../../../../_middleware'
-
-// Helper to check if user is anonymous
-function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
-  return 'anonymous' in user && user.anonymous === true
-}
+import { validateRepoAccess, isAnonymous } from '../../../../../lib/repo-access'
 
 // UTF-8 safe base64 encoding (handles emojis and non-Latin1 characters)
 function utf8ToBase64(str: string): string {
@@ -42,8 +38,8 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 100
 
 // PUT /api/repos/:owner/:repo/issues/bulk - Bulk update issues
-export const onRequestPut: PagesFunction = async (context) => {
-  const { request, params, data } = context
+export const onRequestPut: PagesFunction<{ DB: D1Database }> = async (context) => {
+  const { request, params, data, env } = context
   const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
@@ -62,6 +58,10 @@ export const onRequestPut: PagesFunction = async (context) => {
       headers: { 'Content-Type': 'application/json' },
     })
   }
+
+  // Validate repo access
+  const accessDenied = await validateRepoAccess(env, user, owner, repo, true)
+  if (accessDenied) return accessDenied
 
   try {
     const body = await request.json() as BulkUpdateRequest

@@ -1,6 +1,6 @@
 // GET /api/auth/callback - Handle GitHub OAuth callback
 
-import { encryptToken } from '../../lib/crypto'
+import { encryptToken, createSignedSessionToken } from '../../lib/crypto'
 
 interface Env {
   DB: D1Database
@@ -178,16 +178,29 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 
   // Create session
-  const sessionToken = crypto.randomUUID()
+  const sessionId = crypto.randomUUID()
+  const sessionTtl = 60 * 60 * 24 * 7 // 7 days
+
+  // Create HMAC-signed session token
+  const sessionToken = await createSignedSessionToken(
+    {
+      id: sessionId,
+      userId: user!.id as number,
+      githubId: githubUser.id,
+      role: user!.role as 'admin' | 'premium' | 'user' | 'guest',
+    },
+    env.TOKEN_ENCRYPTION_KEY,
+    sessionTtl
+  )
+
+  // Still store in KV for revocation capability
   const sessionData = JSON.stringify({
     userId: user!.id,
     githubId: githubUser.id,
     role: user!.role,
   })
 
-  const sessionTtl = 60 * 60 * 24 * 7 // 7 days
-
-  await env.SESSIONS.put(`session:${sessionToken}`, sessionData, {
+  await env.SESSIONS.put(`session:${sessionId}`, sessionData, {
     expirationTtl: sessionTtl
   })
 
@@ -196,7 +209,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const userSessionsKey = `user_sessions:${user!.id}`
   const existingSessions = await env.SESSIONS.get(userSessionsKey)
   const sessionsList = existingSessions ? JSON.parse(existingSessions) as string[] : []
-  sessionsList.push(sessionToken)
+  sessionsList.push(sessionId)
   await env.SESSIONS.put(userSessionsKey, JSON.stringify(sessionsList), {
     expirationTtl: sessionTtl
   })

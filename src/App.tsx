@@ -643,16 +643,16 @@ export default function App() {
                   Dashboard
                 </button>
                 <button
-                  onClick={() => navigate('activity')}
-                  style={{ background: view === 'activity' ? '#0077cc' : '#444' }}
-                >
-                  Activity
-                </button>
-                <button
                   onClick={() => navigate('list')}
                   style={{ background: view === 'list' ? '#0077cc' : '#444' }}
                 >
                   List
+                </button>
+                <button
+                  onClick={() => navigate('activity')}
+                  style={{ background: view === 'activity' ? '#0077cc' : '#444' }}
+                >
+                  Activity
                 </button>
                 {!readOnly && (
                   <>
