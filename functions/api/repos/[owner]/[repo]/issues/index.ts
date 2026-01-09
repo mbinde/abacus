@@ -2,6 +2,25 @@
 
 import type { UserContext, AnonymousContext } from '../../../../_middleware'
 
+interface Env {
+  DB: D1Database
+}
+
+// Increment view counter for a repo (fire and forget)
+async function incrementViewCount(env: Env, owner: string, repo: string): Promise<void> {
+  try {
+    await env.DB.prepare(`
+      INSERT INTO repo_views (repo_owner, repo_name, view_count, last_viewed_at)
+      VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+      ON CONFLICT(repo_owner, repo_name) DO UPDATE SET
+        view_count = view_count + 1,
+        last_viewed_at = CURRENT_TIMESTAMP
+    `).bind(owner, repo).run()
+  } catch {
+    // Silently fail - view counting is not critical
+  }
+}
+
 // Helper to check if user is anonymous
 function isAnonymous(user: UserContext | AnonymousContext): user is AnonymousContext {
   return 'anonymous' in user && user.anonymous === true
@@ -58,11 +77,14 @@ const MAX_RETRIES = 3
 const BASE_DELAY_MS = 100
 
 // GET /api/repos/:owner/:repo/issues - List all issues
-export const onRequestGet: PagesFunction = async (context) => {
-  const { params, data } = context
+export const onRequestGet: PagesFunction<Env> = async (context) => {
+  const { params, data, env } = context
   const user = (data as { user: UserContext | AnonymousContext }).user
   const owner = params.owner as string
   const repo = params.repo as string
+
+  // Increment view counter (non-blocking)
+  incrementViewCount(env, owner, repo)
 
   // For anonymous users, use raw GitHub content (no rate limits, CDN-cached)
   // For authenticated users, use GitHub API (gets SHA for optimistic locking)

@@ -47,11 +47,19 @@ interface ActionLogEntry {
   created_at: string
 }
 
+interface RepoViewStats {
+  repo_owner: string
+  repo_name: string
+  view_count: number
+  last_viewed_at: string | null
+  created_at: string
+}
+
 interface Props {
   onBack: () => void
 }
 
-type Tab = 'users' | 'webhooks' | 'logs'
+type Tab = 'users' | 'webhooks' | 'logs' | 'analytics'
 
 export default function AdminPanel({ onBack }: Props) {
   const [users, setUsers] = useState<User[]>([])
@@ -60,6 +68,11 @@ export default function AdminPanel({ onBack }: Props) {
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<Tab>('users')
+
+  // Analytics state
+  const [repoViews, setRepoViews] = useState<RepoViewStats[]>([])
+  const [totalViews, setTotalViews] = useState(0)
+  const [analyticsLoading, setAnalyticsLoading] = useState(false)
 
   // Action log state
   const [logEntries, setLogEntries] = useState<ActionLogEntry[]>([])
@@ -134,6 +147,22 @@ export default function AdminPanel({ onBack }: Props) {
       // Action log might not exist yet
     } finally {
       setLogLoading(false)
+    }
+  }
+
+  async function loadAnalytics() {
+    setAnalyticsLoading(true)
+    try {
+      const res = await fetch('/api/admin/repo-views')
+      if (res.ok) {
+        const data = await res.json() as { stats: RepoViewStats[]; totalViews: number }
+        setRepoViews(data.stats)
+        setTotalViews(data.totalViews)
+      }
+    } catch {
+      // Analytics might not exist yet
+    } finally {
+      setAnalyticsLoading(false)
     }
   }
 
@@ -373,6 +402,19 @@ export default function AdminPanel({ onBack }: Props) {
           }}
         >
           Action Log
+        </button>
+        <button
+          onClick={() => {
+            setActiveTab('analytics')
+            if (repoViews.length === 0) loadAnalytics()
+          }}
+          style={{
+            padding: '0.5rem 1rem',
+            background: activeTab === 'analytics' ? '#0077cc' : '#2a2a3a',
+            color: activeTab === 'analytics' ? 'white' : '#aaa',
+          }}
+        >
+          Analytics
         </button>
       </div>
 
