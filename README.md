@@ -8,8 +8,6 @@ Abacus lets you create, update, and manage beads issues through a web interface.
 
 You can use Abacus alongside the `bd` CLI - both can edit the same issues without conflicts.
 
-**Demo:** https://abacus.motleywoods.dev
-
 ## Features
 
 - **Issue Management** - Create, edit, and close beads issues
@@ -22,16 +20,9 @@ You can use Abacus alongside the `bd` CLI - both can edit the same issues withou
 
 ## Quick Start
 
-### Using the Demo
+**Demo:** https://abacus.motleywoods.dev (read-only)
 
-1. Go to https://abacus.motleywoods.dev
-2. Sign in with GitHub
-3. Add repositories you want to manage
-4. Create and manage issues through the UI
-
-### Self-Hosting
-
-See [Deployment](#deployment) below.
+To manage your own repositories, deploy your own instance - see [Deployment](#deployment) below.
 
 ## Prerequisites
 
