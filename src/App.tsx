@@ -571,6 +571,7 @@ export default function App() {
           selected={selectedRepo}
           onSelect={setSelectedRepo}
           onAdd={handleAddRepo}
+          readOnly={!user}
         />
       ) : selectedRepo && (
         <div style={{ padding: '0.5rem 0', color: '#888', fontSize: '0.9rem' }}>

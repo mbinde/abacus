@@ -13,9 +13,10 @@ interface Props {
   selected: Repo | null
   onSelect: (repo: Repo) => void
   onAdd: (owner: string, name: string) => void
+  readOnly?: boolean
 }
 
-export default function RepoSelector({ repos, selected, onSelect, onAdd }: Props) {
+export default function RepoSelector({ repos, selected, onSelect, onAdd, readOnly }: Props) {
   const [showAddForm, setShowAddForm] = useState(false)
   const [repoUrl, setRepoUrl] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -72,12 +73,14 @@ export default function RepoSelector({ repos, selected, onSelect, onAdd }: Props
             <span style={{ color: '#888' }}>No repos added yet</span>
           )}
         </div>
-        <button onClick={() => setShowAddForm(!showAddForm)}>
-          {showAddForm ? 'Cancel' : 'Add Repo'}
-        </button>
+        {!readOnly && (
+          <button onClick={() => setShowAddForm(!showAddForm)}>
+            {showAddForm ? 'Cancel' : 'Add Repo'}
+          </button>
+        )}
       </div>
 
-      {showAddForm && (
+      {showAddForm && !readOnly && (
         <form onSubmit={handleSubmit} style={{ marginTop: '1rem' }}>
           {error && <div className="error">{error}</div>}
           <div className="flex">

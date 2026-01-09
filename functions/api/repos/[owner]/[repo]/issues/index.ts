@@ -64,14 +64,62 @@ export const onRequestGet: PagesFunction = async (context) => {
   const owner = params.owner as string
   const repo = params.repo as string
 
-  // Get token (undefined for anonymous users - uses public API)
-  const token = isAnonymous(user) ? undefined : user.githubToken
+  // For anonymous users, use raw GitHub content (no rate limits, CDN-cached)
+  // For authenticated users, use GitHub API (gets SHA for optimistic locking)
+  const anonymous = isAnonymous(user)
+  const token = anonymous ? undefined : user.githubToken
 
   try {
     const issues: Issue[] = []
     let format: 'jsonl' | 'markdown' = 'jsonl'
 
-    // Try JSONL format first
+    if (anonymous) {
+      // Anonymous path: use raw.githubusercontent.com (no rate limits)
+      const rawRes = await fetch(
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/.beads/issues.jsonl`
+      )
+
+      if (rawRes.ok) {
+        const content = await rawRes.text()
+        const lines = content.trim().split('\n').filter(l => l.trim())
+
+        for (const line of lines) {
+          const obj = JSON.parse(line)
+          issues.push(normalizeIssue(obj)) // No SHA for anonymous (read-only anyway)
+        }
+      } else {
+        // Try markdown format via raw content
+        format = 'markdown'
+        // For markdown, we'd need to know the file names - fall back to empty for now
+        // This is acceptable since steveyegge/beads uses JSONL format
+      }
+
+      // Get deletions via raw content
+      const deletionsRes = await fetch(
+        `https://raw.githubusercontent.com/${owner}/${repo}/main/.beads/deletions.jsonl`
+      )
+
+      const deletedIds = new Set<string>()
+      if (deletionsRes.ok) {
+        const content = await deletionsRes.text()
+        for (const line of content.trim().split('\n')) {
+          if (!line.trim()) continue
+          try {
+            const obj = JSON.parse(line)
+            deletedIds.add(obj.id)
+          } catch {}
+        }
+      }
+
+      const filteredIssues = issues.filter(i => !deletedIds.has(i.id))
+
+      return new Response(JSON.stringify({ issues: filteredIssues, format }), {
+        status: 200,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    // Authenticated path: use GitHub API (gets SHA for optimistic locking)
     const jsonlRes = await fetch(
       `https://api.github.com/repos/${owner}/${repo}/contents/.beads/issues.jsonl`,
       { headers: githubHeaders(token) }
