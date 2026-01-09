@@ -18,6 +18,7 @@ interface Settings {
   bulk_updates?: 'enabled' | 'disabled'
   view_tree?: 'enabled' | 'disabled'
   view_board?: 'enabled' | 'disabled'
+  repo_analytics?: 'enabled' | 'disabled'
 }
 
 interface RepoWebhook {
@@ -332,6 +333,17 @@ export default function AdminPanel({ onBack }: Props) {
                 >
                   <option value="immediate">Immediate</option>
                   <option value="batched">Batched</option>
+                </select>
+              </label>
+              <label style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '1rem' }}>
+                <span style={{ fontSize: '0.875rem' }}>Repo analytics</span>
+                <select
+                  value={settings.repo_analytics || 'enabled'}
+                  onChange={(e) => handleSettingChange('repo_analytics', e.target.value)}
+                  style={{ padding: '0.25rem 0.5rem', width: '140px' }}
+                >
+                  <option value="enabled">Enabled</option>
+                  <option value="disabled">Disabled</option>
                 </select>
               </label>
             </div>

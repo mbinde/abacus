@@ -6,9 +6,26 @@ interface Env {
   DB: D1Database
 }
 
+// Check if repo analytics is enabled
+async function isRepoAnalyticsEnabled(env: Env): Promise<boolean> {
+  try {
+    const result = await env.DB.prepare(
+      "SELECT value FROM settings WHERE key = 'repo_analytics'"
+    ).first() as { value: string } | null
+    // Default to enabled if no setting exists
+    return result?.value !== 'disabled'
+  } catch {
+    return true // Default to enabled
+  }
+}
+
 // Increment view counter for a repo (fire and forget)
 async function incrementViewCount(env: Env, owner: string, repo: string): Promise<void> {
   try {
+    // Check if analytics is enabled
+    const enabled = await isRepoAnalyticsEnabled(env)
+    if (!enabled) return
+
     await env.DB.prepare(`
       INSERT INTO repo_views (repo_owner, repo_name, view_count, last_viewed_at)
       VALUES (?, ?, 1, CURRENT_TIMESTAMP)

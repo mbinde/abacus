@@ -107,6 +107,13 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       })
     }
 
+    if (key === 'repo_analytics' && !['enabled', 'disabled'].includes(value)) {
+      return new Response(JSON.stringify({ error: 'repo_analytics must be "enabled" or "disabled"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // Upsert the setting
     await env.DB.prepare(`
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)
