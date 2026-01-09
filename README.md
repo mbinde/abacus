@@ -8,6 +8,18 @@ Abacus lets you create, update, and manage beads issues through a web interface.
 
 You can use Abacus alongside the `bd` CLI - both can edit the same issues without conflicts.
 
+## Features
+
+- **Issue Management** - Create, edit, and close beads issues
+- **Multiple Views** - List view, activity feed, and dashboard with charts
+- **Conflict Detection** - Three-way merge detects concurrent edits and helps resolve conflicts
+- **Text Edit Safety** - Warnings when editing text fields that could be overwritten, with backup options
+- **Starring** - Star important issues for quick access
+- **Bulk Updates** - Update status or priority on multiple issues at once
+- **GitHub Integration** - Link issues to PRs and commits
+- **Email Notifications** - Get notified when your issues change
+- **Executor Dispatch** - Trigger GitHub Actions workflows to work on issues
+
 ## Setup
 
 ### Prerequisites
@@ -17,7 +29,7 @@ You can use Abacus alongside the `bd` CLI - both can edit the same issues withou
 
 ### Running Abacus
 
-Abacus is deployed at: `[your deployment URL]`
+Abacus is deployed at: https://abacus.beads.cc
 
 1. Sign in with GitHub
 2. Add repositories you want to manage
@@ -85,13 +97,21 @@ Abacus and the `bd` CLI can both write to the same `.beads/issues.jsonl` file. C
 
 **Abacus (server-side):**
 - Uses GitHub's SHA-based optimistic locking
-- On conflict, fetches latest state, merges by issue ID, and retries
+- Three-way merge detects which fields actually conflict
+- Non-conflicting changes are auto-merged
+- True conflicts show a resolution UI
 - Up to 3 retries with exponential backoff
 
 **Local git (client-side):**
 - The `merge=beads` gitattribute triggers `bd merge` on conflicts
 - Merges by issue ID, keeping the version with the latest `updated_at`
 - New issues from both sides are preserved
+
+**Text Field Safety:**
+- Beads uses "last write wins" for text fields (title, description)
+- Abacus warns you when editing text fields that could be overwritten
+- Optional backup saves your changes as a comment before saving
+- "Convert to comment" lets you propose changes safely
 
 ## Email Notifications
 
@@ -117,7 +137,7 @@ To enable notifications for a repository, set up a GitHub webhook:
 4. Go to your repository on GitHub
 5. Navigate to **Settings** → **Webhooks** → **Add webhook**
 6. Configure the webhook:
-   - **Payload URL:** `https://your-abacus-instance.pages.dev/api/webhooks/github`
+   - **Payload URL:** `https://abacus.beads.cc/api/webhooks/github`
    - **Content type:** `application/json`
    - **Secret:** Paste the secret you copied from Abacus
    - **SSL verification:** Select "Enable SSL verification"
@@ -133,6 +153,42 @@ The webhook will trigger when `.beads/issues.jsonl` changes, and Abacus will not
 Add this secret to your Cloudflare Pages deployment:
 
 - `RESEND_API_KEY` - API key from [Resend](https://resend.com) for sending emails
+
+## Executor Dispatch
+
+Abacus can dispatch issues to AI agents via GitHub Actions workflows. This lets you click a button to have an agent work on an issue.
+
+### Setup
+
+1. In Abacus, go to **Executors** for your repository
+2. Add an executor with:
+   - **Name** - Display name (e.g., "Claude Agent")
+   - **Workflow** - GitHub Actions workflow filename (e.g., `claude-agent.yml`)
+3. Create the workflow in your repository's `.github/workflows/` directory
+
+### Example Workflow
+
+```yaml
+name: Claude Agent
+on:
+  workflow_dispatch:
+    inputs:
+      issue_id:
+        description: 'Beads issue ID'
+        required: true
+
+jobs:
+  work:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Work on issue
+        run: |
+          echo "Working on issue: ${{ github.event.inputs.issue_id }}"
+          # Your agent logic here
+```
+
+When you click "Dispatch" on an issue, Abacus triggers this workflow with the issue ID.
 
 ## Development
 
