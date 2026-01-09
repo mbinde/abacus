@@ -20,7 +20,7 @@ export default function Header({ user, onNavigate, onLogout }: Props) {
         style={{ display: 'flex', alignItems: 'center', gap: '0.75rem', cursor: 'pointer' }}
         onClick={() => onNavigate('list')}
       >
-        <img src="/favicon-96x96.png" alt="" style={{ width: 48, height: 48 }} />
+        <img src="/abacus-icon.png" alt="" style={{ width: 48, height: 48 }} />
         <span style={{ color: 'inherit', textDecoration: 'none' }}>Abacus</span>
       </h1>
       <div style={{ display: 'flex', alignItems: 'center', gap: '1rem' }}>
