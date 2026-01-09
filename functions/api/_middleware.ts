@@ -8,6 +8,19 @@ interface Env {
   TOKEN_ENCRYPTION_KEY: string
 }
 
+// Check if anonymous access is enabled in settings
+async function isAnonymousAccessEnabled(env: Env): Promise<boolean> {
+  try {
+    const result = await env.DB.prepare(
+      "SELECT value FROM settings WHERE key = 'anonymous_access'"
+    ).first() as { value: string } | null
+    // Default to disabled if no setting exists
+    return result?.value === 'enabled'
+  } catch {
+    return false
+  }
+}
+
 // Rate limiting configuration
 const RATE_LIMIT_WINDOW = 60 // seconds
 const RATE_LIMIT_MAX_REQUESTS = 10 // max requests per window for OAuth endpoints
@@ -143,10 +156,13 @@ export const onRequest: PagesFunction<Env> = async (context) => {
   const session = await getSession(request, env)
 
   if (!session) {
-    // Allow anonymous read-only access to demo repo
+    // Allow anonymous read-only access to demo repo if enabled
     if (isPublicDemoRepoReadPath(url.pathname, request.method)) {
-      ;(data as { user: AnonymousContext }).user = { anonymous: true }
-      return next()
+      const anonEnabled = await isAnonymousAccessEnabled(env)
+      if (anonEnabled) {
+        ;(data as { user: AnonymousContext }).user = { anonymous: true }
+        return next()
+      }
     }
 
     return new Response(JSON.stringify({ error: 'Unauthorized' }), {

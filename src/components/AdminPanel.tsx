@@ -14,6 +14,7 @@ interface User {
 interface Settings {
   registration_mode?: 'open' | 'closed'
   notification_mode?: 'immediate' | 'batched'
+  anonymous_access?: 'enabled' | 'disabled'
 }
 
 interface RepoWebhook {
@@ -266,6 +267,17 @@ export default function AdminPanel({ onBack }: Props) {
             >
               <option value="immediate">Send immediately</option>
               <option value="batched">Batch with backoff (1-5 min)</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Anonymous Access:</span>
+            <select
+              value={settings.anonymous_access || 'disabled'}
+              onChange={(e) => handleSettingChange('anonymous_access', e.target.value)}
+              style={{ padding: '0.25rem' }}
+            >
+              <option value="disabled">Disabled (login required)</option>
+              <option value="enabled">Enabled (browse steveyegge/beads without login)</option>
             </select>
           </label>
         </div>

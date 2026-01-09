@@ -206,18 +206,32 @@ export default function App() {
     if (user) {
       loadRepos()
     } else if (!loading) {
-      // For anonymous users, set up demo repo
-      const demoRepo: Repo = {
-        id: 0,
-        owner: 'steveyegge',
-        name: 'beads',
-        webhook_configured: false,
-        webhook_is_owner: false,
-      }
-      setRepos([demoRepo])
-      setSelectedRepo(demoRepo)
+      // For anonymous users, check if anonymous access is enabled
+      checkAnonymousAccess()
     }
   }, [user, loading])
+
+  async function checkAnonymousAccess() {
+    try {
+      // Try to fetch demo repo issues - if 401, anonymous access is disabled
+      const res = await fetch('/api/repos/steveyegge/beads/issues')
+      if (res.ok) {
+        // Anonymous access enabled - set up demo repo
+        const demoRepo: Repo = {
+          id: 0,
+          owner: 'steveyegge',
+          name: 'beads',
+          webhook_configured: false,
+          webhook_is_owner: false,
+        }
+        setRepos([demoRepo])
+        setSelectedRepo(demoRepo)
+      }
+      // If 401, repos stay empty and Login page will show
+    } catch {
+      // Network error - repos stay empty
+    }
+  }
 
   useEffect(() => {
     if (selectedRepo) {
@@ -559,6 +573,11 @@ export default function App() {
   // Create/edit views - require mutation permissions
   if ((view === 'create' || view === 'edit') && readOnly) {
     return <Login error={authError || (user ? 'Guest users cannot create or edit issues' : null)} />
+  }
+
+  // No user and no repos means anonymous access is disabled
+  if (!user && repos.length === 0) {
+    return <Login error={authError} />
   }
 
   return (
