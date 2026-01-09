@@ -58,6 +58,12 @@ function canMutate(user: User | null): boolean {
   return user.role !== 'guest'
 }
 
+interface AppSettings {
+  bulk_updates: 'enabled' | 'disabled'
+  view_tree: 'enabled' | 'disabled'
+  view_board: 'enabled' | 'disabled'
+}
+
 type View = 'list' | 'create' | 'edit' | 'issue' | 'admin' | 'profile' | 'executors' | 'activity' | 'dashboard'
 
 interface AppState {
@@ -125,6 +131,11 @@ export default function App() {
   const [view, setView] = useState<View>('list')
   const [dataLoading, setDataLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const [appSettings, setAppSettings] = useState<AppSettings>({
+    bulk_updates: 'enabled',
+    view_tree: 'disabled',
+    view_board: 'enabled',
+  })
   const isPopState = useRef(false)
   const pendingIssueId = useRef<string | null>(null)
 
@@ -200,7 +211,20 @@ export default function App() {
       window.history.replaceState({}, '', window.location.pathname)
     }
     checkAuth()
+    loadAppSettings()
   }, [])
+
+  async function loadAppSettings() {
+    try {
+      const res = await fetch('/api/settings')
+      if (res.ok) {
+        const data = await res.json() as { settings: AppSettings }
+        setAppSettings(data.settings)
+      }
+    } catch {
+      // Use defaults on error
+    }
+  }
 
   useEffect(() => {
     if (user) {
@@ -652,9 +676,11 @@ export default function App() {
               onEdit={(issue) => navigate('issue', issue)}
               onDelete={handleDeleteIssue}
               onToggleStar={handleToggleStar}
-              onBulkUpdate={handleBulkUpdate}
+              onBulkUpdate={appSettings.bulk_updates === 'enabled' ? handleBulkUpdate : undefined}
               onCreateNew={() => navigate('create')}
               readOnly={readOnly}
+              showTreeView={appSettings.view_tree === 'enabled'}
+              showBoardView={appSettings.view_board === 'enabled'}
             />
           )}
 

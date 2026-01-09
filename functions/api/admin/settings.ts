@@ -86,6 +86,27 @@ export const onRequestPut: PagesFunction<Env> = async (context) => {
       })
     }
 
+    if (key === 'bulk_updates' && !['enabled', 'disabled'].includes(value)) {
+      return new Response(JSON.stringify({ error: 'bulk_updates must be "enabled" or "disabled"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (key === 'view_tree' && !['enabled', 'disabled'].includes(value)) {
+      return new Response(JSON.stringify({ error: 'view_tree must be "enabled" or "disabled"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
+    if (key === 'view_board' && !['enabled', 'disabled'].includes(value)) {
+      return new Response(JSON.stringify({ error: 'view_board must be "enabled" or "disabled"' }), {
+        status: 400,
+        headers: { 'Content-Type': 'application/json' },
+      })
+    }
+
     // Upsert the setting
     await env.DB.prepare(`
       INSERT INTO settings (key, value, updated_at) VALUES (?, ?, CURRENT_TIMESTAMP)

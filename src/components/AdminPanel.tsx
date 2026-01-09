@@ -15,6 +15,9 @@ interface Settings {
   registration_mode?: 'open' | 'closed'
   notification_mode?: 'immediate' | 'batched'
   anonymous_access?: 'enabled' | 'disabled'
+  bulk_updates?: 'enabled' | 'disabled'
+  view_tree?: 'enabled' | 'disabled'
+  view_board?: 'enabled' | 'disabled'
 }
 
 interface RepoWebhook {
@@ -278,6 +281,39 @@ export default function AdminPanel({ onBack }: Props) {
             >
               <option value="disabled">Disabled (login required)</option>
               <option value="enabled">Enabled (browse steveyegge/beads without login)</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Bulk Updates:</span>
+            <select
+              value={settings.bulk_updates || 'enabled'}
+              onChange={(e) => handleSettingChange('bulk_updates', e.target.value)}
+              style={{ padding: '0.25rem' }}
+            >
+              <option value="enabled">Enabled</option>
+              <option value="disabled">Disabled</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Tree View:</span>
+            <select
+              value={settings.view_tree || 'disabled'}
+              onChange={(e) => handleSettingChange('view_tree', e.target.value)}
+              style={{ padding: '0.25rem' }}
+            >
+              <option value="disabled">Hidden</option>
+              <option value="enabled">Visible</option>
+            </select>
+          </label>
+          <label style={{ display: 'flex', alignItems: 'center', gap: '0.5rem' }}>
+            <span>Board View:</span>
+            <select
+              value={settings.view_board || 'enabled'}
+              onChange={(e) => handleSettingChange('view_board', e.target.value)}
+              style={{ padding: '0.25rem' }}
+            >
+              <option value="enabled">Visible</option>
+              <option value="disabled">Hidden</option>
             </select>
           </label>
         </div>

@@ -30,13 +30,15 @@ interface Props {
   onBulkUpdate?: (issueIds: string[], updates: BulkUpdate) => Promise<void>
   onCreateNew?: () => void
   readOnly?: boolean
+  showTreeView?: boolean
+  showBoardView?: boolean
 }
 
 type StatusFilter = 'all' | 'open' | 'in_progress' | 'closed' | 'starred' | 'tree' | 'kanban'
 type SortKey = 'starred' | 'id' | 'title' | 'type' | 'status' | 'priority' | 'updated'
 type SortDir = 'asc' | 'desc'
 
-export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew, readOnly }: Props) {
+export default function IssueList({ issues, starredIds, onEdit, onDelete, onToggleStar, onBulkUpdate, onCreateNew, readOnly, showTreeView = false, showBoardView = true }: Props) {
   // Disable bulk updates in read-only mode
   const effectiveBulkUpdate = readOnly ? undefined : onBulkUpdate
   const [filter, setFilter] = useState<StatusFilter>(() => {
@@ -274,8 +276,8 @@ export default function IssueList({ issues, starredIds, onEdit, onDelete, onTogg
     { key: 'open', label: 'Open' },
     { key: 'in_progress', label: 'In Progress' },
     { key: 'closed', label: 'Closed' },
-    { key: 'tree', label: '🌳 Tree' },
-    { key: 'kanban', label: '📋 Board', hideCount: true },
+    ...(showTreeView ? [{ key: 'tree' as StatusFilter, label: '🌳 Tree' }] : []),
+    ...(showBoardView ? [{ key: 'kanban' as StatusFilter, label: '📋 Board', hideCount: true }] : []),
   ]
 
   // Handle status change for kanban board
