@@ -64,7 +64,8 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     const storedState = cookie.match(/oauth_state=([^;]+)/)?.[1]
 
     if (!code || !state || state !== storedState) {
-      return errorRedirect('invalid_state')
+      // This usually means cookies were blocked or cleared during the OAuth flow
+      return errorRedirect('Login failed: security check failed. Please ensure cookies are enabled and try again.')
     }
 
     // Exchange code for access token
