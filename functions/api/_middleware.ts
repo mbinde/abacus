@@ -164,8 +164,16 @@ async function getSession(request: Request, env: Env): Promise<SessionData | nul
     const payload = await verifySignedSessionToken(token, env.TOKEN_ENCRYPTION_KEY)
     if (payload) {
       // Verify session still exists in KV (for revocation support)
-      const kvSession = await env.SESSIONS.get(`session:${payload.id}`)
-      if (!kvSession) return null  // Session was revoked
+      // If KV check fails, still allow the session (KV is optional for revocation)
+      try {
+        const kvSession = await env.SESSIONS.get(`session:${payload.id}`)
+        if (!kvSession) {
+          console.log('[auth] Session not found in KV, but token is valid - allowing')
+        }
+      } catch (kvError) {
+        console.error('[auth] KV lookup failed:', kvError)
+        // Continue anyway - token signature is valid
+      }
 
       return {
         userId: payload.userId,

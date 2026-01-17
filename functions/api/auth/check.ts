@@ -1,8 +1,11 @@
 // GET /api/auth/check - Check authentication status and return user info
 
+import { verifySignedSessionToken } from '../../lib/crypto'
+
 interface Env {
   DB: D1Database
   SESSIONS: KVNamespace
+  TOKEN_ENCRYPTION_KEY: string
 }
 
 interface SessionData {
@@ -24,16 +27,33 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   }
 
   const token = match[1]
-  const session = await env.SESSIONS.get(`session:${token}`)
+  let sessionData: SessionData | null = null
 
-  if (!session) {
+  // Try signed token first (contains a dot separator)
+  if (token.includes('.')) {
+    const payload = await verifySignedSessionToken(token, env.TOKEN_ENCRYPTION_KEY)
+    if (payload) {
+      sessionData = {
+        userId: payload.userId,
+        role: payload.role,
+      }
+    }
+  }
+
+  // Fall back to legacy UUID token lookup (for existing sessions during migration)
+  if (!sessionData) {
+    const session = await env.SESSIONS.get(`session:${token}`)
+    if (session) {
+      sessionData = JSON.parse(session) as SessionData
+    }
+  }
+
+  if (!sessionData) {
     return new Response(JSON.stringify({ authenticated: false }), {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
     })
   }
-
-  const sessionData = JSON.parse(session) as SessionData
 
   // Get user details from database
   const user = await env.DB.prepare(

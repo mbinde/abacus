@@ -216,9 +216,16 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
       role: user!.role,
     })
 
-    await env.SESSIONS.put(`session:${sessionId}`, sessionData, {
-      expirationTtl: sessionTtl
-    })
+    try {
+      console.log('[auth] Storing session in KV:', sessionId)
+      await env.SESSIONS.put(`session:${sessionId}`, sessionData, {
+        expirationTtl: sessionTtl
+      })
+      console.log('[auth] Session stored successfully')
+    } catch (kvError) {
+      console.error('[auth] Failed to store session in KV:', kvError)
+      // Continue anyway - session will work but won't be revocable
+    }
 
     // Store reverse mapping for session invalidation on user deletion
     // Get existing sessions for this user and add the new one

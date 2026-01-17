@@ -314,6 +314,19 @@ export default function App() {
 
   // Initialize state from URL on mount
   useEffect(() => {
+    // Log the full URL for debugging
+    console.log('[Abacus] Initial URL:', window.location.href)
+    console.log('[Abacus] Search params:', window.location.search)
+
+    // IMPORTANT: Check for OAuth error FIRST, before rewriting URL
+    const params = new URLSearchParams(window.location.search)
+    const errorParam = params.get('error')
+    if (errorParam) {
+      const decodedError = decodeURIComponent(errorParam)
+      console.log('[Abacus] Auth error from URL:', decodedError)
+      setAuthError(decodedError)
+    }
+
     const state = parseUrlState()
     setView(state.view)
     if (state.issueId) {
@@ -323,19 +336,9 @@ export default function App() {
     if (state.owner && state.repo) {
       pendingUrlState.current = state
     }
-    // Replace current history entry with state
+    // Replace current history entry with state (this removes ?error= param)
     window.history.replaceState(state, '', buildUrl(state))
-  }, [])
 
-  useEffect(() => {
-    // Check for OAuth error in URL
-    const params = new URLSearchParams(window.location.search)
-    const errorParam = params.get('error')
-    if (errorParam) {
-      setAuthError(decodeURIComponent(errorParam))
-      // Clean up URL but preserve path
-      window.history.replaceState({}, '', window.location.pathname)
-    }
     checkAuth()
     loadAppSettings()
   }, [])
@@ -957,6 +960,7 @@ ${backupFields.description}
         </div>
       )}
 
+      {authError && <div className="error">{authError}</div>}
       {error && <div className="error">{error}</div>}
 
       {selectedRepo && (
