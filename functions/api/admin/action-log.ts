@@ -63,7 +63,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (repoFilter) {
       const [owner, name] = repoFilter.split('/')
       if (owner && name) {
-        query += ' AND repo_owner = ? AND repo_name = ?'
+        query += ' AND LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)'
         params.push(owner, name)
       }
     }
@@ -96,7 +96,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
     if (repoFilter) {
       const [owner, name] = repoFilter.split('/')
       if (owner && name) {
-        countQuery += ' AND repo_owner = ? AND repo_name = ?'
+        countQuery += ' AND LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)'
         countParams.push(owner, name)
       }
     }

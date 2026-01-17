@@ -15,7 +15,7 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
 
   try {
     const result = await env.DB.prepare(
-      'SELECT issue_id FROM stars WHERE user_id = ? AND repo_owner = ? AND repo_name = ?'
+      'SELECT issue_id FROM stars WHERE user_id = ? AND LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)'
     ).bind(user.id, owner, repo).all()
 
     const starredIds = (result.results as Array<{ issue_id: string }>).map(r => r.issue_id)
@@ -85,7 +85,7 @@ export const onRequestDelete: PagesFunction<Env> = async (context) => {
     }
 
     await env.DB.prepare(
-      'DELETE FROM stars WHERE user_id = ? AND repo_owner = ? AND repo_name = ? AND issue_id = ?'
+      'DELETE FROM stars WHERE user_id = ? AND LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?) AND issue_id = ?'
     ).bind(user.id, owner, repo, issue_id).run()
 
     return new Response(JSON.stringify({ success: true }), {

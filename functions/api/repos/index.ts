@@ -119,9 +119,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       })
     }
 
-    // Check if repo already exists in global repos table
+    // Check if repo already exists in global repos table (case-insensitive)
     let repo = await env.DB.prepare(
-      'SELECT * FROM repos WHERE owner = ? AND name = ?'
+      'SELECT * FROM repos WHERE LOWER(owner) = LOWER(?) AND LOWER(name) = LOWER(?)'
     ).bind(owner, name).first() as Repo | null
 
     if (!repo) {

@@ -279,9 +279,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
   try {
     console.log('[webhook] Processing for repo:', repoOwner, '/', repoName)
 
-    // Look up the webhook secret for this repo (now global, not per-user)
+    // Look up the webhook secret for this repo (now global, not per-user, case-insensitive)
     const repo = await env.DB.prepare(
-      'SELECT id, webhook_secret, webhook_owner_id FROM repos WHERE owner = ? AND name = ?'
+      'SELECT id, webhook_secret, webhook_owner_id FROM repos WHERE LOWER(owner) = LOWER(?) AND LOWER(name) = LOWER(?)'
     ).bind(repoOwner, repoName).first() as { id: number; webhook_secret: string | null; webhook_owner_id: number | null } | null
 
     console.log('[webhook] Repo lookup result:', repo ? `id=${repo.id}, hasSecret=${!!repo.webhook_secret}` : 'not found')
@@ -383,9 +383,9 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       return new Response('OK', { status: 200 })
     }
 
-    // Get previous state from database
+    // Get previous state from database (case-insensitive)
     const prevState = await env.DB.prepare(
-      'SELECT issues_hash, issues_snapshot FROM webhook_state WHERE repo_owner = ? AND repo_name = ?'
+      'SELECT issues_hash, issues_snapshot FROM webhook_state WHERE LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)'
     ).bind(repoOwner, repoName).first() as WebhookState | null
 
     const token = await decryptToken(userWithToken.github_token_encrypted, env.TOKEN_ENCRYPTION_KEY)
@@ -435,15 +435,15 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     console.log('[webhook] Detected changes:', changes.length, changes.map(c => ({ id: c.issue.id, type: c.changeType })))
 
     if (changes.length === 0) {
-      // Update hash even if no meaningful changes detected
+      // Update hash even if no meaningful changes detected (case-insensitive match)
       await env.DB.prepare(`
         UPDATE webhook_state SET issues_hash = ?, issues_snapshot = ?, updated_at = CURRENT_TIMESTAMP
-        WHERE repo_owner = ? AND repo_name = ?
+        WHERE LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)
       `).bind(currentHash, JSON.stringify(currentIssues), repoOwner, repoName).run()
       return new Response('OK', { status: 200 })
     }
 
-    // Get users to notify with their per-repo settings
+    // Get users to notify with their per-repo settings (case-insensitive)
     const usersToNotify = await env.DB.prepare(`
       SELECT DISTINCT u.id, u.github_login, u.email,
         COALESCE(urs.notify_issues, 'assigned') as notify_issues,
@@ -452,7 +452,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       JOIN user_repos ur ON ur.user_id = u.id
       JOIN repos r ON r.id = ur.repo_id
       LEFT JOIN user_repo_settings urs ON urs.user_id = u.id AND urs.repo_id = r.id
-      WHERE r.owner = ? AND r.name = ?
+      WHERE LOWER(r.owner) = LOWER(?) AND LOWER(r.name) = LOWER(?)
         AND u.email IS NOT NULL
     `).bind(repoOwner, repoName).all() as { results: UserWithEmail[] }
 
@@ -480,7 +480,7 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
     if (userIds.length > 0 && issueIds.length > 0) {
       const starsResult = await env.DB.prepare(`
         SELECT user_id, issue_id FROM stars
-        WHERE repo_owner = ? AND repo_name = ?
+        WHERE LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)
           AND user_id IN (${userIds.map(() => '?').join(',')})
           AND issue_id IN (${issueIds.map(() => '?').join(',')})
       `).bind(repoOwner, repoName, ...userIds, ...issueIds).all() as { results: Array<{ user_id: number; issue_id: string }> }
@@ -562,10 +562,10 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
       }
     }
 
-    // Update state
+    // Update state (case-insensitive match)
     await env.DB.prepare(`
       UPDATE webhook_state SET issues_hash = ?, issues_snapshot = ?, updated_at = CURRENT_TIMESTAMP
-      WHERE repo_owner = ? AND repo_name = ?
+      WHERE LOWER(repo_owner) = LOWER(?) AND LOWER(repo_name) = LOWER(?)
     `).bind(currentHash, JSON.stringify(currentIssues), repoOwner, repoName).run()
 
     return new Response('OK', { status: 200 })

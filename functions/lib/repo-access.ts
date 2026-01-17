@@ -23,7 +23,7 @@ export async function hasRepoAccess(
   const result = await db.prepare(`
     SELECT 1 FROM user_repos ur
     JOIN repos r ON ur.repo_id = r.id
-    WHERE ur.user_id = ? AND r.owner = ? AND r.name = ?
+    WHERE ur.user_id = ? AND LOWER(r.owner) = LOWER(?) AND LOWER(r.name) = LOWER(?)
   `).bind(userId, owner, name).first()
 
   return result !== null
