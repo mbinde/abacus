@@ -6,6 +6,7 @@
 -- We need to recreate the table with the new constraint
 
 -- Create new users table with guest role
+-- NOTE: Must include email columns from migration 005!
 CREATE TABLE users_new (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   github_id INTEGER UNIQUE NOT NULL,
@@ -14,13 +15,15 @@ CREATE TABLE users_new (
   github_avatar_url TEXT,
   github_token_encrypted TEXT,
   role TEXT NOT NULL DEFAULT 'guest' CHECK (role IN ('admin', 'premium', 'user', 'guest')),
+  email TEXT,
+  email_notifications INTEGER DEFAULT 0,
   created_at TEXT DEFAULT (datetime('now')),
   last_login_at TEXT
 );
 
 -- Copy existing data (existing users keep their current role)
-INSERT INTO users_new (id, github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, created_at, last_login_at)
-SELECT id, github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, created_at, last_login_at
+INSERT INTO users_new (id, github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, email, email_notifications, created_at, last_login_at)
+SELECT id, github_id, github_login, github_name, github_avatar_url, github_token_encrypted, role, email, email_notifications, created_at, last_login_at
 FROM users;
 
 -- Drop old table and rename new one

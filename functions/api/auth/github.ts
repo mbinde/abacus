@@ -8,6 +8,12 @@ export const onRequestGet: PagesFunction<Env> = async (context) => {
   const { env, request } = context
   const url = new URL(request.url)
 
+  // Validate required environment variables
+  if (!env.GITHUB_CLIENT_ID) {
+    console.error('Missing GITHUB_CLIENT_ID environment variable')
+    return Response.redirect(`${url.origin}/?error=${encodeURIComponent('Server configuration error: OAuth not configured')}`)
+  }
+
   // Generate state for CSRF protection
   const state = crypto.randomUUID()
 
