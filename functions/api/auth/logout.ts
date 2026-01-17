@@ -1,5 +1,8 @@
+import { verifySignedSessionToken } from '../../lib/crypto'
+
 interface Env {
   SESSIONS: KVNamespace
+  TOKEN_ENCRYPTION_KEY: string
 }
 
 export const onRequestPost: PagesFunction<Env> = async (context) => {
@@ -10,7 +13,18 @@ export const onRequestPost: PagesFunction<Env> = async (context) => {
 
   if (match) {
     const token = match[1]
-    await env.SESSIONS.delete(`session:${token}`)
+
+    // Try signed token first (contains a dot separator)
+    if (token.includes('.')) {
+      const payload = await verifySignedSessionToken(token, env.TOKEN_ENCRYPTION_KEY)
+      if (payload) {
+        // Delete session from KV using the session ID from the token
+        await env.SESSIONS.delete(`session:${payload.id}`)
+      }
+    } else {
+      // Legacy UUID token - delete directly
+      await env.SESSIONS.delete(`session:${token}`)
+    }
   }
 
   return new Response(JSON.stringify({ success: true }), {

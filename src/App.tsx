@@ -543,7 +543,7 @@ export default function App() {
     })
 
     try {
-      const res = await fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/stars`, {
+      const res = await apiFetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/stars`, {
         method: star ? 'POST' : 'DELETE',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ issue_id: issueId }),
@@ -661,7 +661,7 @@ ${timestamp}
 ${backupFields.title}
 ───────────────────────────────────────────────────`
           backupPromises.push(
-            fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}/comments`, {
+            apiFetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}/comments`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ text: commentText }),
@@ -677,7 +677,7 @@ ${timestamp}
 ${backupFields.description}
 ───────────────────────────────────────────────────`
           backupPromises.push(
-            fetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}/comments`, {
+            apiFetch(`/api/repos/${selectedRepo.owner}/${selectedRepo.name}/issues/${issue.id}/comments`, {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ text: commentText }),
@@ -702,7 +702,7 @@ ${backupFields.description}
             baseState: editBaseState
           }
 
-      const res = await fetch(url, {
+      const res = await apiFetch(url, {
         method: isNew ? 'POST' : 'PUT',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(requestBody),
